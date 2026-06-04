@@ -53,7 +53,7 @@ curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-
 curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/scripts/quick-install.sh | sudo bash
 ```
 
-安装脚本内部下载项目源码、sing-box 二进制和 zashboard 时会先尝试直连，失败后自动尝试反代地址。
+安装脚本内部下载项目源码、sing-box 二进制和 zashboard 时会优先尝试反代地址，失败后再尝试 GitHub 官方地址。
 
 安装器会交互式询问：
 

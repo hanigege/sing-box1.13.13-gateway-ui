@@ -13,7 +13,7 @@ fi
 
 if [ "${SING_BOX_GATEWAY_DRY_RUN:-0}" != "1" ] && [ "$(id -u)" -ne 0 ]; then
   echo "请用 root 权限运行，例如：" >&2
-  echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/${REF}/scripts/quick-install.sh | sudo bash" >&2
+  echo "  curl -fsSL ${PROXY_PREFIX}https://raw.githubusercontent.com/${REPO}/${REF}/scripts/quick-install.sh | sudo bash" >&2
   exit 1
 fi
 
@@ -41,7 +41,7 @@ download_first() {
 
 echo "正在下载 sing-box-gateway-ui ${REPO}@${REF}..."
 archive_url="https://github.com/${REPO}/archive/refs/heads/${REF}.tar.gz"
-download_first "$archive" "$archive_url" "${PROXY_PREFIX}${archive_url}"
+download_first "$archive" "${PROXY_PREFIX}${archive_url}" "$archive_url"
 mkdir -p "$src"
 tar -xzf "$archive" -C "$src" --strip-components=1
 

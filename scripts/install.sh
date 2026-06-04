@@ -47,7 +47,7 @@ curl_first() {
   shift
   local url
   for url in "$@"; do
-    echo "Trying download: $url"
+    echo "尝试下载: $url"
     if curl -fL --connect-timeout 10 --max-time 180 "$url" -o "$output"; then
       return 0
     fi
@@ -77,14 +77,14 @@ install_sing_box() {
   arch="$(detect_arch)"
   if [ "$SING_BOX_VERSION" = "latest" ]; then
     api_url="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
-    version="$(curl_text_first "$api_url" "$(proxy_url "$api_url")" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))')"
+    version="$(curl_text_first "$(proxy_url "$api_url")" "$api_url" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))')"
   else
     version="$SING_BOX_VERSION"
   fi
   url="https://github.com/SagerNet/sing-box/releases/download/v${version}/sing-box-${version}-linux-${arch}.tar.gz"
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  curl_first "$tmp/sing-box.tar.gz" "$url" "$(proxy_url "$url")"
+  curl_first "$tmp/sing-box.tar.gz" "$(proxy_url "$url")" "$url"
   tar -xzf "$tmp/sing-box.tar.gz" -C "$tmp"
   install -m 0755 "$tmp"/sing-box-*/sing-box /usr/local/bin/sing-box
 }
@@ -107,9 +107,9 @@ install_clash_ui() {
   mkdir -p "$CLASH_UI_DIR"
   tmp="$(mktemp -d)"
   api_url="https://api.github.com/repos/Zephyruso/zashboard/releases/latest"
-  if asset_url="$(curl_text_first "$api_url" "$(proxy_url "$api_url")" \
+  if asset_url="$(curl_text_first "$(proxy_url "$api_url")" "$api_url" \
       | python3 -c 'import json,sys; assets=json.load(sys.stdin)["assets"]; print(next(item["browser_download_url"] for item in assets if item["name"] == "dist.zip"))')" \
-    && curl_first "$tmp/zashboard.zip" "$asset_url" "$(proxy_url "$asset_url")"; then
+    && curl_first "$tmp/zashboard.zip" "$(proxy_url "$asset_url")" "$asset_url"; then
     unzip -oq "$tmp/zashboard.zip" -d "$tmp/zashboard"
     if [ -d "$tmp/zashboard/dist" ]; then
       rsync -a --delete "$tmp/zashboard/dist/" "$CLASH_UI_DIR/"
