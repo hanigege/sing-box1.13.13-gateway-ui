@@ -35,6 +35,12 @@ def ask_int(prompt, default):
         print("Please enter a valid port.")
 
 
+def ask_yes_no(prompt, default=True):
+    default_text = "yes" if default else "no"
+    value = ask(prompt, default_text).lower()
+    return value in {"y", "yes", "1", "true"}
+
+
 def default_lan_ip():
     try:
         out = subprocess.check_output(["ip", "-o", "-4", "route", "get", "1.1.1.1"], text=True)
@@ -94,6 +100,43 @@ def node_from_prompt(index, default_type):
             if short_id:
                 outbound["tls"]["reality"]["short_id"] = short_id
     return {"enabled": True, "outbound": outbound}
+
+
+def template_nodes():
+    return [
+        {
+            "enabled": True,
+            "outbound": {
+                "type": "hysteria2",
+                "tag": "TEMPLATE-HY2",
+                "server": "198.51.100.10",
+                "server_port": 443,
+                "password": "change-me-hysteria2-password",
+                "tls": {"enabled": True, "server_name": "example.com", "insecure": True},
+                "obfs": {"type": "salamander", "password": "change-me-obfs-password"},
+                "up_mbps": 20,
+                "down_mbps": 100,
+            },
+        },
+        {
+            "enabled": True,
+            "outbound": {
+                "type": "vless",
+                "tag": "TEMPLATE-VLESS",
+                "server": "203.0.113.10",
+                "server_port": 443,
+                "uuid": "00000000-0000-4000-8000-000000000001",
+                "packet_encoding": "xudp",
+                "tcp_fast_open": True,
+                "tls": {
+                    "enabled": True,
+                    "server_name": "example.com",
+                    "insecure": True,
+                    "utls": {"enabled": True, "fingerprint": "chrome"},
+                },
+            },
+        },
+    ]
 
 
 def initial_nodes_from_file():
@@ -209,11 +252,14 @@ def main():
         ipaddress.ip_address(ipv6_dns)
     nodes = initial_nodes_from_file()
     if nodes is None:
-        node_count = ask_int("Initial node count", 2)
-        nodes = []
-        for index in range(1, node_count + 1):
-            default_type = "hysteria2" if index == 1 else "vless"
-            nodes.append(node_from_prompt(index, default_type))
+        if ask_yes_no("Use two placeholder template nodes and edit them later in UI?", True):
+            nodes = template_nodes()
+        else:
+            node_count = ask_int("Initial node count", 2)
+            nodes = []
+            for index in range(1, node_count + 1):
+                default_type = "hysteria2" if index == 1 else "vless"
+                nodes.append(node_from_prompt(index, default_type))
     secret = secrets.token_urlsafe(24)
     base = base_config(lan_ip, secret, fake4, fake6, ipv6_dns)
     default_node = nodes[0]["outbound"]["tag"]
