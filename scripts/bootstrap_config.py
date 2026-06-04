@@ -15,6 +15,8 @@ BASE_CONFIG_PATH = MANAGER_DIR / "base.json"
 NODES_PATH = MANAGER_DIR / "nodes.json"
 GROUPS_PATH = MANAGER_DIR / "groups.json"
 INITIAL_NODES_FILE = os.environ.get("SING_BOX_INITIAL_NODES_FILE", "")
+DEFAULT_FAKE4 = "28.0.0.0/8"
+DEFAULT_FAKE6 = "2001:2::/64"
 
 
 def ask(prompt, default=""):
@@ -242,17 +244,23 @@ def main():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     MANAGER_DIR.mkdir(parents=True, exist_ok=True)
     RULE_DIR.mkdir(parents=True, exist_ok=True)
+    simple_mode = ask_yes_no("Use simple mode? Start first, edit nodes and advanced options later in UI.", True)
     lan_ip = ask("LAN IPv4 address for DNS/UI", default_lan_ip())
-    fake4 = ask("FakeIP IPv4 range", "28.0.0.0/8")
-    fake6 = ask("FakeIP IPv6 range", "2001:2::/64")
-    ipv6_dns = ask("IPv6 DNS listen address, empty to disable", "")
+    if simple_mode:
+        fake4 = DEFAULT_FAKE4
+        fake6 = DEFAULT_FAKE6
+        ipv6_dns = ""
+    else:
+        fake4 = ask("FakeIP IPv4 range", DEFAULT_FAKE4)
+        fake6 = ask("FakeIP IPv6 range", DEFAULT_FAKE6)
+        ipv6_dns = ask("IPv6 DNS listen address, empty to disable", "")
+        if ipv6_dns:
+            ipaddress.ip_address(ipv6_dns)
     ipaddress.ip_network(fake4, strict=False)
     ipaddress.ip_network(fake6, strict=False)
-    if ipv6_dns:
-        ipaddress.ip_address(ipv6_dns)
     nodes = initial_nodes_from_file()
     if nodes is None:
-        if ask_yes_no("Use two placeholder template nodes and edit them later in UI?", True):
+        if simple_mode or ask_yes_no("Use two placeholder template nodes and edit them later in UI?", True):
             nodes = template_nodes()
         else:
             node_count = ask_int("Initial node count", 2)

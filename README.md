@@ -46,13 +46,18 @@ curl -fsSL https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui/main/s
 
 安装器会交互式询问：
 
+- 是否使用简单模式，默认 yes
 - 旁路网关的 LAN IPv4 地址
+
+简单模式会使用默认 FakeIP 网段和两个脱敏模板节点，让 `sing-box` 与 UI 先跑起来。模板节点不能直接代理流量，进入规则 UI 后，把 `TEMPLATE-HY2` 或 `TEMPLATE-VLESS` 改成自己的真实节点即可。
+
+如果选择高级模式，安装器还会询问：
+
 - FakeIP IPv4/IPv6 网段
 - IPv6 DNS 监听地址，不需要可留空
-- 是否先使用两个脱敏模板节点启动，默认 yes
-- 如果不使用模板，再输入节点 tag、server、端口和认证参数
+- 是否使用模板节点，或手动输入节点 tag、server、端口和认证参数
 
-模板节点只用于让 `sing-box` 和 UI 先跑起来，不能直接代理流量。进入规则 UI 后，把 `TEMPLATE-HY2` 或 `TEMPLATE-VLESS` 改成自己的真实节点即可。安装过程中会先下载必需分流规则、生成 TProxy 规则脚本，并执行 `sing-box check`。检查不通过时不会启用服务。
+安装过程中会先下载必需分流规则、生成 TProxy 规则脚本，并执行 `sing-box check`。检查不通过时不会启用服务。
 
 ## Git 安装
 
