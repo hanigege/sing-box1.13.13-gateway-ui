@@ -6,10 +6,25 @@ TOKEN_FILE="/etc/sing-box/rule-ui/token"
 
 python3 - <<'PY'
 import json
+import socket
+import subprocess
 from pathlib import Path
 
 config_path = Path("/etc/sing-box/config.json")
 token_path = Path("/etc/sing-box/rule-ui/token")
+
+def default_lan_ip():
+    try:
+        out = subprocess.check_output(["ip", "-o", "-4", "route", "get", "1.1.1.1"], text=True)
+        parts = out.split()
+        if "src" in parts:
+            return parts[parts.index("src") + 1]
+    except Exception:
+        pass
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except Exception:
+        return ""
 
 config = {}
 if config_path.exists():
@@ -18,18 +33,23 @@ if config_path.exists():
 controller = config.get("experimental", {}).get("clash_api", {}).get("external_controller", "")
 secret = config.get("experimental", {}).get("clash_api", {}).get("secret", "")
 lan_ip = controller.split(":", 1)[0] if ":" in controller else ""
+display_ip = default_lan_ip() if lan_ip in ("", "0.0.0.0", "::") else lan_ip
+display_controller = controller
+if controller and lan_ip in ("0.0.0.0", "::") and display_ip:
+    port = controller.rsplit(":", 1)[1] if ":" in controller else "9090"
+    display_controller = f"{display_ip}:{port}"
 token = token_path.read_text(encoding="utf-8").strip() if token_path.exists() else ""
 
 print("Sing-box Gateway")
 print("================")
-if lan_ip:
-    print(f"Rule UI:        http://{lan_ip}:9091/")
+if display_ip:
+    print(f"Rule UI:        http://{display_ip}:9091/")
 else:
     print("Rule UI:        http://<gateway-ip>:9091/")
 print(f"Rule UI token:  {token or '<missing>'}")
-if controller:
-    print(f"Clash UI:       http://{controller}/ui/")
-    print(f"Clash API:      http://{controller}")
+if display_controller:
+    print(f"Clash UI:       http://{display_controller}/ui/")
+    print(f"Clash API:      http://{display_controller}")
 else:
     print("Clash UI:       http://<gateway-ip>:9090/ui/")
     print("Clash API:      http://<gateway-ip>:9090")

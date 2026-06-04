@@ -402,6 +402,7 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR):
         raise ValueError("At least one node must be enabled")
     config = load_json(BASE_CONFIG_PATH, {})
     rewrite_custom_rule_paths(config, rule_dir)
+    apply_portable_listeners(config)
     apply_fakeip_settings(config, groups)
     apply_blacklist_dns_reject(config)
     apply_ddns_dns_settings(config, groups)
@@ -427,6 +428,30 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR):
     block = groups.get("block") or {"type": "block", "tag": "block"}
     config["outbounds"] = [proxy, auto, *[node["outbound"] for node in nodes if node.get("enabled", True)], direct, block]
     return config
+
+
+def apply_portable_listeners(config):
+    for inbound in config.get("inbounds", []) or []:
+        if not isinstance(inbound, dict):
+            continue
+        listen = str(inbound.get("listen", ""))
+        try:
+            listen_port = int(inbound.get("listen_port") or 0)
+            is_ipv4_listen = isinstance(ipaddress.ip_address(listen), ipaddress.IPv4Address)
+        except Exception:
+            listen_port = 0
+            is_ipv4_listen = False
+        if inbound.get("tag") == "dns-in" or (inbound.get("type") == "direct" and listen_port == 53 and is_ipv4_listen):
+            inbound["listen"] = "0.0.0.0"
+    clash = config.setdefault("experimental", {}).setdefault("clash_api", {})
+    controller = str(clash.get("external_controller", "")).strip()
+    controller_host = controller.rsplit(":", 1)[0] if ":" in controller else controller
+    try:
+        is_ipv4_controller = isinstance(ipaddress.ip_address(controller_host), ipaddress.IPv4Address)
+    except Exception:
+        is_ipv4_controller = False
+    if not controller or is_ipv4_controller:
+        clash["external_controller"] = "0.0.0.0:9090"
 
 
 def apply_fakeip_settings(config, groups):
