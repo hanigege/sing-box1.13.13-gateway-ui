@@ -17,6 +17,8 @@
 - FakeIP 网段不绕过 TProxy，交给 sing-box 分流
 - 规则集定时更新，失败保留旧文件
 - 维护页显示规则更新、TProxy、服务状态
+- 9090 Clash API 和本地 zashboard 控制面板
+- `sing-box-gateway-info` 一键查看两个 UI 的地址和密钥
 
 ## 支持系统
 
@@ -40,15 +42,22 @@ sudo bash scripts/install.sh
 - 旁路网关的 LAN IPv4 地址
 - FakeIP IPv4/IPv6 网段
 - IPv6 DNS 监听地址，不需要可留空
-- 第一个代理节点类型
+- 初始节点数量，默认 2 个
 - 节点 tag、server、端口和认证参数
 
 安装过程中会先下载必需分流规则、生成 TProxy 规则脚本，并执行 `sing-box check`。检查不通过时不会启用服务。
 
-安装完成后会输出 UI token。打开：
+安装完成后会输出规则 UI token 和 9090 控制面板 secret。忘记也没关系，在网关机器上运行：
+
+```bash
+sing-box-gateway-info
+```
+
+入口：
 
 ```text
 http://<你的旁路网关IP>:8088/
+http://<你的旁路网关IP>:9090/ui/
 ```
 
 ## 安全说明

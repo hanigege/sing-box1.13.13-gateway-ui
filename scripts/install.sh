@@ -7,6 +7,7 @@ INSTALL_DIR="/opt/singbox-rule-ui"
 CONFIG_DIR="/etc/sing-box"
 MANAGER_DIR="$CONFIG_DIR/manager"
 RULE_DIR="$CONFIG_DIR/custom-rules"
+CLASH_UI_DIR="$CONFIG_DIR/ui"
 
 need_root() {
   if [ "$(id -u)" -ne 0 ]; then
@@ -18,7 +19,7 @@ need_root() {
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    apt-get install -y curl ca-certificates tar gzip python3 nftables iproute2 rsync util-linux
+    apt-get install -y curl ca-certificates tar gzip unzip python3 nftables iproute2 rsync util-linux
   else
     echo "Only apt-based systems are supported by this MVP installer." >&2
     exit 1
@@ -55,12 +56,28 @@ install_sing_box() {
 install_files() {
   mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$MANAGER_DIR" "$RULE_DIR"
   rsync -a --delete "$PROJECT_DIR/singbox-rule-ui/" "$INSTALL_DIR/"
+  install -m 0755 "$PROJECT_DIR/scripts/sing-box-gateway-info" /usr/local/bin/sing-box-gateway-info
   install -m 0644 "$PROJECT_DIR/systemd/singbox-rule-ui.service" /etc/systemd/system/singbox-rule-ui.service
   install -m 0755 "$PROJECT_DIR/scripts/update-sing-box-rules-jsdelivr" /usr/local/sbin/update-sing-box-rules-jsdelivr
   install -m 0644 "$PROJECT_DIR/systemd/update-sing-box-rules-jsdelivr.service" /etc/systemd/system/update-sing-box-rules-jsdelivr.service
   install -m 0644 "$PROJECT_DIR/systemd/update-sing-box-rules-jsdelivr.timer" /etc/systemd/system/update-sing-box-rules-jsdelivr.timer
   install -m 0644 "$PROJECT_DIR/systemd/sing-box.service" /etc/systemd/system/sing-box.service
   install -m 0644 "$PROJECT_DIR/systemd/sing-box-tproxy.service" /etc/systemd/system/sing-box-tproxy.service
+}
+
+install_clash_ui() {
+  mkdir -p "$CLASH_UI_DIR"
+  tmp="$(mktemp -d)"
+  if curl -fsSL https://api.github.com/repos/Zephyruso/zashboard/releases/latest \
+    | python3 -c 'import json,sys; assets=json.load(sys.stdin)["assets"]; print(next(item["browser_download_url"] for item in assets if item["name"] == "dist.zip"))' \
+    | xargs curl -fL -o "$tmp/zashboard.zip"; then
+    unzip -oq "$tmp/zashboard.zip" -d "$tmp/zashboard"
+    rsync -a --delete "$tmp/zashboard/" "$CLASH_UI_DIR/"
+    echo "zashboard installed to $CLASH_UI_DIR"
+  else
+    echo "WARN: zashboard download failed; sing-box will still run, and port 9090 API remains available." >&2
+  fi
+  rm -rf "$tmp"
 }
 
 bootstrap_config() {
@@ -93,6 +110,7 @@ main() {
   install_packages
   install_sing_box
   install_files
+  install_clash_ui
   bootstrap_config
   install_initial_rules
   install_tproxy_setup
@@ -101,8 +119,7 @@ main() {
   refresh_tproxy_after_start
   echo
   echo "Installed."
-  echo "Token:"
-  cat /etc/sing-box/rule-ui/token
+  sing-box-gateway-info
 }
 
 main "$@"

@@ -53,11 +53,11 @@ def write_json(path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def node_from_prompt():
-    node_type = ask("First node type: hysteria2 or vless", "hysteria2")
+def node_from_prompt(index, default_type):
+    node_type = ask(f"Node {index} type: hysteria2 or vless", default_type)
     if node_type not in {"hysteria2", "vless"}:
         raise ValueError("Unsupported node type")
-    tag = ask("Node tag", "proxy-1")
+    tag = ask("Node tag", f"{node_type}-{index}")
     server = ask("Node server IP/domain")
     port = ask_int("Node port", 443)
     sni = ask("TLS server_name", server)
@@ -166,7 +166,12 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
         },
         "experimental": {
             "cache_file": {"enabled": True},
-            "clash_api": {"external_controller": f"{lan_ip}:9090", "secret": ui_secret},
+            "clash_api": {
+                "external_controller": f"{lan_ip}:9090",
+                "external_ui": "/etc/sing-box/ui",
+                "secret": ui_secret,
+                "default_mode": "rule",
+            },
         },
     }
 
@@ -183,11 +188,16 @@ def main():
     ipaddress.ip_network(fake6, strict=False)
     if ipv6_dns:
         ipaddress.ip_address(ipv6_dns)
-    node = node_from_prompt()
+    node_count = ask_int("Initial node count", 2)
+    nodes = []
+    for index in range(1, node_count + 1):
+        default_type = "hysteria2" if index == 1 else "vless"
+        nodes.append(node_from_prompt(index, default_type))
     secret = secrets.token_urlsafe(24)
     base = base_config(lan_ip, secret, fake4, fake6, ipv6_dns)
+    default_node = nodes[0]["outbound"]["tag"]
     groups = {
-        "proxy": {"default": node["outbound"]["tag"], "interrupt_exist_connections": True},
+        "proxy": {"default": default_node, "interrupt_exist_connections": True},
         "auto": {"url": "https://www.gstatic.com/generate_204", "interval": "2m", "tolerance": 50},
         "direct": {"type": "direct", "tag": "direct"},
         "block": {"type": "block", "tag": "block"},
@@ -197,7 +207,7 @@ def main():
     for name in ("whitelist", "blacklist", "greylist", "ddns"):
         write_json(RULE_DIR / f"{name}.json", empty_rule_set())
     write_json(BASE_CONFIG_PATH, base)
-    write_json(NODES_PATH, [node])
+    write_json(NODES_PATH, nodes)
     write_json(GROUPS_PATH, groups)
     token_path = CONFIG_DIR / "rule-ui" / "token"
     token_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,7 +216,7 @@ def main():
     import sys
     sys.path.insert(0, "/opt/singbox-rule-ui")
     from app import render_config
-    write_json(CONFIG_PATH, render_config(nodes=[node], groups=groups, rule_dir=RULE_DIR))
+    write_json(CONFIG_PATH, render_config(nodes=nodes, groups=groups, rule_dir=RULE_DIR))
 
 
 if __name__ == "__main__":

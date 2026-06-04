@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG="/etc/sing-box/config.json"
+TOKEN_FILE="/etc/sing-box/rule-ui/token"
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+config_path = Path("/etc/sing-box/config.json")
+token_path = Path("/etc/sing-box/rule-ui/token")
+
+config = {}
+if config_path.exists():
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+
+controller = config.get("experimental", {}).get("clash_api", {}).get("external_controller", "")
+secret = config.get("experimental", {}).get("clash_api", {}).get("secret", "")
+lan_ip = controller.split(":", 1)[0] if ":" in controller else ""
+token = token_path.read_text(encoding="utf-8").strip() if token_path.exists() else ""
+
+print("Sing-box Gateway")
+print("================")
+if lan_ip:
+    print(f"Rule UI:        http://{lan_ip}:8088/")
+else:
+    print("Rule UI:        http://<gateway-ip>:8088/")
+print(f"Rule UI token:  {token or '<missing>'}")
+if controller:
+    print(f"Clash UI:       http://{controller}/ui/")
+    print(f"Clash API:      http://{controller}")
+else:
+    print("Clash UI:       http://<gateway-ip>:9090/ui/")
+    print("Clash API:      http://<gateway-ip>:9090")
+print(f"Clash secret:   {secret or '<missing>'}")
+print()
+print("Forgot the passwords? Run: sing-box-gateway-info")
+print("Service checks:")
+print("  systemctl status sing-box")
+print("  systemctl status sing-box-tproxy")
+print("  systemctl status singbox-rule-ui")
+PY
