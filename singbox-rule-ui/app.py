@@ -431,6 +431,7 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR):
 
 
 def apply_portable_listeners(config):
+    lan_ip = default_lan_ip()
     for inbound in config.get("inbounds", []) or []:
         if not isinstance(inbound, dict):
             continue
@@ -441,8 +442,8 @@ def apply_portable_listeners(config):
         except Exception:
             listen_port = 0
             is_ipv4_listen = False
-        if inbound.get("tag") == "dns-in" or (inbound.get("type") == "direct" and listen_port == 53 and is_ipv4_listen):
-            inbound["listen"] = "0.0.0.0"
+        if lan_ip and (inbound.get("tag") == "dns-in" or (inbound.get("type") == "direct" and listen_port == 53 and is_ipv4_listen)):
+            inbound["listen"] = lan_ip
     clash = config.setdefault("experimental", {}).setdefault("clash_api", {})
     controller = str(clash.get("external_controller", "")).strip()
     controller_host = controller.rsplit(":", 1)[0] if ":" in controller else controller
@@ -450,8 +451,8 @@ def apply_portable_listeners(config):
         is_ipv4_controller = isinstance(ipaddress.ip_address(controller_host), ipaddress.IPv4Address)
     except Exception:
         is_ipv4_controller = False
-    if not controller or is_ipv4_controller:
-        clash["external_controller"] = "0.0.0.0:9090"
+    if lan_ip and (not controller or is_ipv4_controller):
+        clash["external_controller"] = f"{lan_ip}:9090"
 
 
 def apply_fakeip_settings(config, groups):

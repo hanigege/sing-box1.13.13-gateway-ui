@@ -170,7 +170,7 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
     dns_inbounds = ["dns-in"]
     inbounds = [
         {"type": "tproxy", "tag": "tproxy-in", "listen": "::", "listen_port": 9888, "sniff": False},
-        {"type": "direct", "tag": "dns-in", "listen": "0.0.0.0", "listen_port": 53},
+        {"type": "direct", "tag": "dns-in", "listen": lan_ip, "listen_port": 53},
     ]
     if ipv6_dns_listen:
         dns_inbounds.append("dns-in-v6")
@@ -236,7 +236,7 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
         "experimental": {
             "cache_file": {"enabled": True},
             "clash_api": {
-                "external_controller": "0.0.0.0:9090",
+                "external_controller": f"{lan_ip}:9090",
                 "external_ui": "/etc/sing-box/ui",
                 "secret": ui_secret,
                 "default_mode": "rule",
