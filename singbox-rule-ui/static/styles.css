@@ -269,6 +269,8 @@ select {
 }
 
 .secondary-btn {
+  position: relative;
+  overflow: hidden;
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -276,9 +278,12 @@ select {
   background: #fff;
   color: #7a4d12;
   font-weight: 650;
+  transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
 }
 
 #updateRulesBtn {
+  position: relative;
+  overflow: hidden;
   min-height: 42px;
   border: 0;
   border-radius: 6px;
@@ -286,6 +291,47 @@ select {
   background: var(--accent);
   color: #ffffff;
   font-weight: 700;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+
+.secondary-btn.working,
+#updateRulesBtn.working {
+  border-color: rgba(63, 127, 190, 0.35);
+  background: #eef6ff;
+  color: #2c679d;
+}
+
+.secondary-btn.working::after,
+#updateRulesBtn.working::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: action-progress 1.1s ease-in-out infinite;
+}
+
+.secondary-btn.done,
+#updateRulesBtn.done {
+  border-color: rgba(42, 140, 92, 0.32);
+  background: #edf8f2;
+  color: var(--ok);
+}
+
+.secondary-btn.failed,
+#updateRulesBtn.failed {
+  border-color: rgba(190, 75, 73, 0.32);
+  background: #fff1f1;
+  color: var(--danger);
+}
+
+@keyframes action-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
 }
 
 .add-row {

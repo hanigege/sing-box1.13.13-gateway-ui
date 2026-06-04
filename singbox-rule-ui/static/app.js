@@ -8,6 +8,8 @@ const translations = {
     restartSingbox: "Restart sing-box",
     restartTproxy: "Restart TProxy",
     restartingTproxy: "Restarting TProxy",
+    restartingSingbox: "Restarting sing-box",
+    singboxRestarted: "sing-box restarted",
     tproxyRestarted: "TProxy restarted",
     tproxyRestartFailed: "TProxy restart failed. sing-box is still running.",
     save: "Save",
@@ -65,7 +67,9 @@ const translations = {
     refreshMaintenance: "Refresh",
     restartUi: "Restart UI",
     restartingUi: "Restarting UI",
-    uiRestartScheduled: "UI restart requested. Reopen the page in a moment.",
+    uiRestartScheduled: "UI restart requested. The page will reconnect shortly.",
+    actionDone: "Done",
+    actionFailed: "Failed",
     updateRules: "Update rule sets",
     syncTproxy: "Sync TProxy",
     updatingRules: "Updating rule sets",
@@ -171,6 +175,8 @@ const translations = {
     restartSingbox: "重启 sing-box",
     restartTproxy: "重启 TProxy",
     restartingTproxy: "正在重启 TProxy",
+    restartingSingbox: "正在重启 sing-box",
+    singboxRestarted: "sing-box 已重启",
     tproxyRestarted: "TProxy 已重启",
     tproxyRestartFailed: "TProxy 重启失败，sing-box 仍在运行。",
     save: "保存",
@@ -228,7 +234,9 @@ const translations = {
     refreshMaintenance: "刷新状态",
     restartUi: "重启 UI",
     restartingUi: "正在重启 UI",
-    uiRestartScheduled: "UI 重启请求已发送，稍后刷新页面即可。",
+    uiRestartScheduled: "UI 正在重启，页面稍后会自动恢复。",
+    actionDone: "完成",
+    actionFailed: "失败",
     updateRules: "立即更新分流规则",
     syncTproxy: "同步 TProxy",
     updatingRules: "正在更新分流规则",
@@ -340,6 +348,7 @@ let editingNodeTag = null;
 let editingNodeSnapshot = "";
 let nodeEditChanged = false;
 let metaUpdatedAt = null;
+const actionButtonTimers = {};
 
 const $ = (id) => document.getElementById(id);
 const t = (key) => translations[lang][key] || translations.en[key] || key;
@@ -377,6 +386,26 @@ function updateButtons() {
   $("updateRulesBtn").disabled = busy;
   $("saveBtn").disabled = busy || !dirty;
   $("nodeSubmit").disabled = busy || Boolean(editingNodeTag && !nodeEditChanged);
+}
+
+function setActionButton(id, textKey, tone = "") {
+  const button = $(id);
+  clearTimeout(actionButtonTimers[id]);
+  button.textContent = t(textKey);
+  button.classList.remove("working", "done", "failed");
+  if (tone) button.classList.add(tone);
+}
+
+function pulseActionButton(id, textKey) {
+  setActionButton(id, textKey, "working");
+}
+
+function finishActionButton(id, textKey, tone = "done", resetKey = null) {
+  setActionButton(id, textKey, tone);
+  actionButtonTimers[id] = setTimeout(() => {
+    if (resetKey) setActionButton(id, resetKey);
+    else applyLanguage();
+  }, 1600);
 }
 
 async function api(path, options = {}) {
@@ -720,6 +749,7 @@ async function refreshMaintenance() {
 
 async function updateRuleSets() {
   setBusy(true);
+  pulseActionButton("updateRulesBtn", "updatingRules");
   setStatus(t("updatingRules"));
   maintenance.ruleUpdate = maintenance.ruleUpdate || {};
   maintenance.ruleUpdate.result = t("updatingRules");
@@ -737,11 +767,14 @@ async function updateRuleSets() {
     if (result.state) state = result.state;
     render();
     if (result.update?.code !== 0) {
+      finishActionButton("updateRulesBtn", "actionFailed", "failed", "updateRules");
       setStatus(result.update?.stderr || t("restartFailed"), "bad");
       return;
     }
+    finishActionButton("updateRulesBtn", "actionDone", "done", "updateRules");
     setStatus(t("rulesUpdated"), "ok");
   } catch (error) {
+    finishActionButton("updateRulesBtn", "actionFailed", "failed", "updateRules");
     setStatus(error.message, "bad");
   } finally {
     setBusy(false);
@@ -750,6 +783,7 @@ async function updateRuleSets() {
 
 async function syncTproxy() {
   setBusy(true);
+  pulseActionButton("syncTproxyBtn", "syncingTproxy");
   setStatus(t("syncingTproxy"));
   try {
     const result = await api("/api/tproxy/sync", { method: "POST", body: "{}" });
@@ -757,11 +791,14 @@ async function syncTproxy() {
     if (result.state) state = result.state;
     render();
     if (result.sync?.code !== 0) {
+      finishActionButton("syncTproxyBtn", "actionFailed", "failed", "syncTproxy");
       setStatus(result.sync?.stderr || t("tproxySyncFailed"), "bad");
       return;
     }
+    finishActionButton("syncTproxyBtn", "actionDone", "done", "syncTproxy");
     setStatus(t("tproxySynced"), "ok");
   } catch (error) {
+    finishActionButton("syncTproxyBtn", "actionFailed", "failed", "syncTproxy");
     setStatus(`${t("tproxySyncFailed")} ${error.message}`, "bad");
   } finally {
     setBusy(false);
@@ -1322,7 +1359,8 @@ async function save() {
 
 async function restart() {
   setBusy(true);
-  setStatus(t("restarting"));
+  pulseActionButton("restartSingboxBtn", "restartingSingbox");
+  setStatus(t("restartingSingbox"));
   try {
     const result = await api("/api/restart", { method: "POST", body: "{}" });
     state = result.state;
@@ -1331,15 +1369,19 @@ async function restart() {
     const checkResult = result.check;
     const restartResult = result.restart;
     if (checkResult.code !== 0) {
+      finishActionButton("restartSingboxBtn", "actionFailed", "failed", "restartSingbox");
       setStatus(checkResult.stderr || t("checkFailed"), "bad");
       return;
     }
     if (restartResult.code !== 0) {
+      finishActionButton("restartSingboxBtn", "actionFailed", "failed", "restartSingbox");
       setStatus(restartResult.stderr || t("restartFailed"), "bad");
       return;
     }
-    setStatus(t("restarted"), "ok");
+    finishActionButton("restartSingboxBtn", "actionDone", "done", "restartSingbox");
+    setStatus(t("singboxRestarted"), "ok");
   } catch (error) {
+    finishActionButton("restartSingboxBtn", "actionFailed", "failed", "restartSingbox");
     setStatus(error.message, "bad");
   } finally {
     setBusy(false);
@@ -1348,6 +1390,7 @@ async function restart() {
 
 async function restartTproxy() {
   setBusy(true);
+  pulseActionButton("restartTproxyBtn", "restartingTproxy");
   setStatus(t("restartingTproxy"));
   try {
     const result = await api("/api/tproxy/restart", { method: "POST", body: "{}" });
@@ -1355,11 +1398,14 @@ async function restartTproxy() {
     if (result.state) state = result.state;
     render();
     if (result.restart?.code !== 0) {
+      finishActionButton("restartTproxyBtn", "actionFailed", "failed", "restartTproxy");
       setStatus(result.restart?.stderr || t("tproxyRestartFailed"), "bad");
       return;
     }
+    finishActionButton("restartTproxyBtn", "actionDone", "done", "restartTproxy");
     setStatus(t("tproxyRestarted"), "ok");
   } catch (error) {
+    finishActionButton("restartTproxyBtn", "actionFailed", "failed", "restartTproxy");
     setStatus(`${t("tproxyRestartFailed")} ${error.message}`, "bad");
   } finally {
     setBusy(false);
@@ -1368,11 +1414,14 @@ async function restartTproxy() {
 
 async function restartUi() {
   setBusy(true);
+  pulseActionButton("restartUiBtn", "restartingUi");
   setStatus(t("restartingUi"));
   try {
     await api("/api/ui/restart", { method: "POST", body: "{}" });
+    finishActionButton("restartUiBtn", "actionDone", "done", "restartUi");
     setStatus(t("uiRestartScheduled"), "ok");
   } catch (error) {
+    finishActionButton("restartUiBtn", "actionFailed", "failed", "restartUi");
     setStatus(error.message, "bad");
     setBusy(false);
   }

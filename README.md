@@ -59,6 +59,20 @@ curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/s
 
 安装过程中会先下载必需分流规则、生成 TProxy 规则脚本，并执行 `sing-box check`。检查不通过时不会启用服务。
 
+## 一键卸载
+
+默认卸载会停止服务、移除 UI、systemd 单元、TProxy 运行规则和辅助脚本，但保留 `/etc/sing-box` 配置和 `/usr/local/bin/sing-box`，方便以后恢复：
+
+```bash
+curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/scripts/quick-install.sh | sudo bash -s uninstall
+```
+
+彻底删除配置、规则缓存和 sing-box 二进制：
+
+```bash
+curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/scripts/quick-install.sh | sudo bash -s purge
+```
+
 ## Git 安装
 
 适合想修改脚本或参与开发的用户：
@@ -67,6 +81,13 @@ curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/s
 git clone https://github.com/hanigege/sing-box-gateway-ui.git
 cd sing-box-gateway-ui
 sudo bash scripts/install.sh
+```
+
+本地卸载：
+
+```bash
+sudo bash scripts/install.sh uninstall
+sudo bash scripts/install.sh purge
 ```
 
 ## 访问入口

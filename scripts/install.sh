@@ -57,6 +57,7 @@ install_files() {
   mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$MANAGER_DIR" "$RULE_DIR"
   rsync -a --delete "$PROJECT_DIR/singbox-rule-ui/" "$INSTALL_DIR/"
   install -m 0755 "$PROJECT_DIR/scripts/sing-box-gateway-info" /usr/local/bin/sing-box-gateway-info
+  install -m 0755 "$PROJECT_DIR/scripts/uninstall.sh" /usr/local/bin/sing-box-gateway-uninstall
   install -m 0755 "$PROJECT_DIR/scripts/refresh_runtime_config.py" /usr/local/sbin/refresh-sing-box-runtime-config
   install -m 0644 "$PROJECT_DIR/systemd/singbox-rule-ui.service" /etc/systemd/system/singbox-rule-ui.service
   install -m 0755 "$PROJECT_DIR/scripts/update-sing-box-rules-jsdelivr" /usr/local/sbin/update-sing-box-rules-jsdelivr
@@ -128,6 +129,20 @@ refresh_tproxy_after_start() {
 }
 
 main() {
+  case "${1:-install}" in
+    install|"") ;;
+    uninstall|remove)
+      exec bash "$PROJECT_DIR/scripts/uninstall.sh" "${@:2}"
+      ;;
+    purge)
+      exec bash "$PROJECT_DIR/scripts/uninstall.sh" --purge "${@:2}"
+      ;;
+    *)
+      echo "Unknown action: $1" >&2
+      echo "Usage: sudo bash scripts/install.sh [install|uninstall|purge]" >&2
+      exit 1
+      ;;
+  esac
   need_root
   install_packages
   install_sing_box
