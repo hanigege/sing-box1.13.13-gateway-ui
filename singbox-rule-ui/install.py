@@ -98,6 +98,10 @@ def ensure_route_rules(config):
 
 def ensure_dns_rules(config):
     dns_rules = config.setdefault("dns", {}).setdefault("rules", [])
+    blacklist_rule = {
+        "rule_set": TAGS["blacklist"],
+        "action": "reject",
+    }
     inbound_rule = {
         "inbound": ["dns-in", "dns-in-v6"],
         "rule_set": TAGS["ddns"],
@@ -111,10 +115,14 @@ def ensure_dns_rules(config):
         "server": "local-dns",
         "rewrite_ttl": 60,
     }
-    changed = False
+    dns_rules[:] = [
+        rule
+        for rule in dns_rules
+        if not (rule.get("rule_set") == TAGS["blacklist"] and rule.get("action") == "reject")
+    ]
+    dns_rules.insert(0, blacklist_rule)
     if not has_rule(dns_rules, TAGS["ddns"], server="local-dns"):
-        dns_rules.insert(0, global_rule)
-        changed = True
+        dns_rules.insert(1, global_rule)
     has_inbound = any(
         rule.get("rule_set") == TAGS["ddns"]
         and rule.get("server") == "local-dns"
@@ -122,7 +130,7 @@ def ensure_dns_rules(config):
         for rule in dns_rules
     )
     if not has_inbound:
-        dns_rules.insert(1 if changed else 0, inbound_rule)
+        dns_rules.insert(2, inbound_rule)
 
 
 def main():

@@ -192,6 +192,7 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
                 {"tag": "fakeip-dns", "type": "fakeip", "inet4_range": fake4, "inet6_range": fake6},
             ],
             "rules": [
+                {"rule_set": "custom-blacklist", "action": "reject"},
                 {"rule_set": "custom-ddns", "action": "route", "server": "local-dns", "rewrite_ttl": 60},
                 {"inbound": dns_inbounds, "rule_set": "custom-ddns", "action": "route", "server": "local-dns", "rewrite_ttl": 60},
                 {"inbound": dns_inbounds, "rule_set": ["geosite-cn", "geosite-geolocation-cn", "geosite-icloud@cn", "geosite-apple@cn"], "action": "route", "server": "local-dns", "rewrite_ttl": 60},
