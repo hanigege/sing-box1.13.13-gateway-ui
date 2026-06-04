@@ -21,7 +21,11 @@ DEFAULT_FAKE6 = "2001:2::/64"
 
 def ask(prompt, default=""):
     suffix = f" [{default}]" if default else ""
-    value = input(f"{prompt}{suffix}: ").strip()
+    try:
+        value = input(f"{prompt}{suffix}: ").strip()
+    except EOFError:
+        print()
+        value = ""
     return value or default
 
 

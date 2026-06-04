@@ -39,4 +39,9 @@ if [ "${SING_BOX_GATEWAY_DRY_RUN:-0}" = "1" ]; then
   exit 0
 fi
 
+if [ -r /dev/tty ]; then
+  exec bash "$src/scripts/install.sh" </dev/tty
+fi
+
+echo "未检测到可交互终端，将使用默认值继续安装。"
 exec bash "$src/scripts/install.sh"
