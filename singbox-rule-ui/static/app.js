@@ -65,9 +65,13 @@ const translations = {
     delayFailed: "Failed",
     refreshDelay: "Refresh delay",
     refreshMaintenance: "Refresh",
+    refreshingMaintenance: "Refreshing",
+    maintenanceRefreshed: "Refreshed",
     restartUi: "Restart UI",
     restartingUi: "Restarting UI",
     uiRestartScheduled: "UI restart requested. The page will reconnect shortly.",
+    uiRestartReady: "UI restarted and reconnected",
+    uiRestartManualRefresh: "UI restart was requested. If the page does not update, refresh the browser.",
     actionDone: "Done",
     actionFailed: "Failed",
     updateRules: "Update rule sets",
@@ -232,9 +236,13 @@ const translations = {
     delayFailed: "失败",
     refreshDelay: "刷新延迟",
     refreshMaintenance: "刷新状态",
+    refreshingMaintenance: "正在刷新",
+    maintenanceRefreshed: "已刷新",
     restartUi: "重启 UI",
     restartingUi: "正在重启 UI",
     uiRestartScheduled: "UI 正在重启，页面稍后会自动恢复。",
+    uiRestartReady: "UI 已重启并恢复连接",
+    uiRestartManualRefresh: "UI 重启请求已发送；如果页面没有变化，可以手动刷新浏览器。",
     actionDone: "完成",
     actionFailed: "失败",
     updateRules: "立即更新分流规则",
@@ -416,6 +424,21 @@ async function api(path, options = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.check?.stderr || body.error || `HTTP ${response.status}`);
   return body;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForUiReconnect(timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs;
+  await sleep(900);
+  while (Date.now() < deadline) {
+    try {
+      return await api("/api/maintenance");
+    } catch (error) {
+      await sleep(700);
+    }
+  }
+  return null;
 }
 
 function showLogin() {
@@ -737,13 +760,21 @@ function renderMaintenance() {
 }
 
 async function refreshMaintenance() {
+  setBusy(true);
+  pulseActionButton("refreshMaintenanceBtn", "refreshingMaintenance");
+  setStatus(t("refreshingMaintenance"));
   try {
     const result = await api("/api/maintenance");
     maintenance = result.maintenance || {};
     if (result.state) state = result.state;
     render();
+    finishActionButton("refreshMaintenanceBtn", "actionDone", "done", "refreshMaintenance");
+    setStatus(t("maintenanceRefreshed"), "ok");
   } catch (error) {
+    finishActionButton("refreshMaintenanceBtn", "actionFailed", "failed", "refreshMaintenance");
     setStatus(error.message, "bad");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -1418,11 +1449,22 @@ async function restartUi() {
   setStatus(t("restartingUi"));
   try {
     await api("/api/ui/restart", { method: "POST", body: "{}" });
-    finishActionButton("restartUiBtn", "actionDone", "done", "restartUi");
     setStatus(t("uiRestartScheduled"), "ok");
+    const result = await waitForUiReconnect();
+    if (result) {
+      maintenance = result.maintenance || maintenance;
+      if (result.state) state = result.state;
+      render();
+      finishActionButton("restartUiBtn", "actionDone", "done", "restartUi");
+      setStatus(t("uiRestartReady"), "ok");
+    } else {
+      finishActionButton("restartUiBtn", "actionDone", "done", "restartUi");
+      setStatus(t("uiRestartManualRefresh"), "ok");
+    }
   } catch (error) {
     finishActionButton("restartUiBtn", "actionFailed", "failed", "restartUi");
     setStatus(error.message, "bad");
+  } finally {
     setBusy(false);
   }
 }
