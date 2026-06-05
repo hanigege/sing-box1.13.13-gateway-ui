@@ -228,10 +228,15 @@ install_initial_rules() {
 }
 
 write_fallback_resolver() {
+  nameservers="$(collect_host_nameservers)"
   rm -f /etc/resolv.conf
   {
-    echo "nameserver 223.5.5.5"
-    echo "nameserver 1.1.1.1"
+    if [ -n "$nameservers" ]; then
+      printf "%s\n" "$nameservers"
+    else
+      echo "nameserver 223.5.5.5"
+      echo "nameserver 1.1.1.1"
+    fi
     echo "options timeout:2 attempts:2"
   } > /etc/resolv.conf
 }
@@ -251,7 +256,7 @@ ensure_bootstrap_resolver() {
   if resolver_has_external_nameserver; then
     return
   fi
-  echo "No usable external DNS resolver found in /etc/resolv.conf; writing temporary public resolvers."
+  echo "No usable external DNS resolver found in /etc/resolv.conf; writing host upstream resolvers for bootstrap."
   write_fallback_resolver
 }
 
