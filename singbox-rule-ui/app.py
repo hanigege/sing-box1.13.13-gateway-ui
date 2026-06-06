@@ -64,6 +64,7 @@ LIST_ENTRY_TYPES = {
 DOMAIN_RE = re.compile(r"^[A-Za-z0-9_*.-]+$")
 SPECIAL_OUTBOUNDS = {"Proxy", "Auto", "direct", "block"}
 SUPPORTED_NODE_TYPES = {"hysteria2", "vless"}
+BACKUP_VERSION = 1
 
 
 def now_stamp():
@@ -130,6 +131,12 @@ def write_json(path, data):
 def restore_file(path, backup):
     if backup and Path(backup).exists():
         shutil.copy2(backup, path)
+
+
+def read_text_if_exists(path):
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def clash_api_settings():
@@ -1674,6 +1681,88 @@ def apply_all(normalized_lists, nodes, groups):
     return {"rules": saved, "backups": backups}
 
 
+def export_backup_payload():
+    ensure_manager_data()
+    return {
+        "kind": "sing-box-gateway-ui-backup",
+        "version": BACKUP_VERSION,
+        "exportedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "host": socket.gethostname(),
+        "paths": {
+            "config": str(CONFIG_PATH),
+            "manager": str(MANAGER_DIR),
+            "rules": str(RULE_DIR),
+            "tproxyScript": str(TPROXY_SCRIPT),
+            "tproxySysctl": str(TPROXY_SYSCTL),
+            "radvd": str(RADVD_CONF),
+        },
+        "lists": {name: read_entries(name) for name in LISTS},
+        "nodes": load_nodes(),
+        "groups": load_groups(),
+        "snapshots": {
+            "config": load_json(CONFIG_PATH, {}) if CONFIG_PATH.exists() else {},
+            "base": load_json(BASE_CONFIG_PATH, {}) if BASE_CONFIG_PATH.exists() else {},
+            "tproxyScript": read_text_if_exists(TPROXY_SCRIPT),
+            "tproxySysctl": read_text_if_exists(TPROXY_SYSCTL),
+            "radvd": read_text_if_exists(RADVD_CONF),
+            "ruleFiles": {
+                name: load_json(rule_path(name), empty_rule_set()) if rule_path(name).exists() else empty_rule_set()
+                for name in LISTS
+            },
+        },
+    }
+
+
+def import_backup_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Backup must be a JSON object")
+    if payload.get("kind") != "sing-box-gateway-ui-backup":
+        raise ValueError("Unsupported backup file")
+    version = int(payload.get("version") or 0)
+    if version < 1 or version > BACKUP_VERSION:
+        raise ValueError(f"Unsupported backup version: {version}")
+    normalized_lists = normalize_payload_lists(payload.get("lists", {}))
+    nodes = normalize_nodes(payload.get("nodes", []))
+    groups = normalize_payload_groups(payload.get("groups", {}), nodes=nodes)
+    check = staged_check(normalized_lists, nodes=nodes, groups=groups)
+    if check["code"] != 0:
+        return {
+            "ok": False,
+            "error": "Config check failed. Backup was not imported.",
+            "check": check,
+            "saved": None,
+            "restart": None,
+            "rollback": None,
+            "tproxySync": None,
+        }
+    result = apply_all(normalized_lists, nodes, groups)
+    restart = restart_sing_box()
+    rollback = None
+    if restart["code"] != 0 or service_status() != "active":
+        rollback_apply(result)
+        rollback_restart = restart_sing_box()
+        rollback = {"restart": rollback_restart, "service": service_status()}
+        return {
+            "ok": False,
+            "error": "Restart failed. Previous config was restored.",
+            "check": check,
+            "saved": result,
+            "restart": restart,
+            "rollback": rollback,
+            "tproxySync": None,
+        }
+    tproxy_sync = sync_tproxy(nodes=nodes, groups=groups)
+    return {
+        "ok": True,
+        "error": "",
+        "check": check,
+        "saved": result,
+        "restart": restart,
+        "rollback": rollback,
+        "tproxySync": tproxy_sync,
+    }
+
+
 def rollback_apply(result):
     backups = (result or {}).get("backups", {})
     restore_file(CONFIG_PATH, backups.get("config"))
@@ -1732,6 +1821,15 @@ class Handler(BaseHTTPRequestHandler):
     def send_error_json(self, message, status=400):
         self.send_json({"error": message}, status)
 
+    def send_download(self, filename, payload):
+        body = json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def read_json_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         if length > 2_000_000:
@@ -1758,6 +1856,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error_json("Unauthorized", 401)
                 return
             self.send_json({"maintenance": maintenance_status(), "state": load_state()})
+            return
+        if parsed.path == "/api/backup/export":
+            if not self.authorized():
+                self.send_error_json("Unauthorized", 401)
+                return
+            filename = f"sing-box-gateway-ui-backup-{socket.gethostname()}-{now_stamp()}.json"
+            self.send_download(filename, export_backup_payload())
             return
         if parsed.path == "/api/delays":
             if not self.authorized():
@@ -1876,6 +1981,18 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/ui/restart":
                 restart_rule_ui_later()
                 self.send_json({"scheduled": True, "service": RULE_UI_SERVICE})
+                return
+            if parsed.path == "/api/backup/import":
+                result = import_backup_payload(payload)
+                status = 200 if result["ok"] else 422 if result.get("check", {}).get("code") != 0 else 500
+                self.send_json(
+                    {
+                        **result,
+                        "maintenance": maintenance_status(),
+                        "state": load_state(),
+                    },
+                    status,
+                )
                 return
             if parsed.path == "/api/proxy/select":
                 tag = str(payload.get("tag", "")).strip()

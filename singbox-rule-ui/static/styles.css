@@ -513,6 +513,25 @@ select {
   gap: 10px;
 }
 
+.backup-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #cbdde6;
+  border-radius: 8px;
+  background: #f7fbfd;
+  padding: 12px;
+}
+
+.backup-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .maintenance-card {
   display: grid;
   gap: 8px;

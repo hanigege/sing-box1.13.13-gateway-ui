@@ -76,6 +76,15 @@ const translations = {
     actionFailed: "Failed",
     updateRules: "Update rule sets",
     syncTproxy: "Sync TProxy",
+    exportBackup: "Export backup",
+    importBackup: "Import backup",
+    exportingBackup: "Exporting backup",
+    importingBackup: "Importing backup",
+    backupExported: "Backup exported",
+    backupImported: "Backup imported and sing-box restarted",
+    backupExportedAlert: "Backup exported successfully.",
+    backupImportedAlert: "Backup imported successfully. sing-box and TProxy are ready.",
+    backupImportFailed: "Backup import failed. Existing config is still in use.",
     updatingRules: "Updating rule sets",
     ruleUpdateRunning: "Updating now. Please wait.",
     ruleUpdateSlow: "Update is slow. Existing rule files are still in use.",
@@ -85,6 +94,8 @@ const translations = {
     tproxySyncFailed: "TProxy sync failed. sing-box is still running.",
     maintenance: "Maintenance",
     maintenanceNote: "Rule-set updates and TProxy status",
+    backupTitle: "Backup and restore",
+    backupNote: "Export or restore the UI-managed rules, nodes, and routing settings.",
     ruleUpdateTitle: "Rule-set updates",
     ruleUpdateDetails: "Update details",
     updatedRules: "Updated",
@@ -248,6 +259,15 @@ const translations = {
     actionFailed: "失败",
     updateRules: "立即更新分流规则",
     syncTproxy: "同步 TProxy",
+    exportBackup: "导出备份",
+    importBackup: "导入备份",
+    exportingBackup: "正在导出备份",
+    importingBackup: "正在导入备份",
+    backupExported: "备份已导出",
+    backupImported: "备份已导入，sing-box 已重启",
+    backupExportedAlert: "备份导出成功。",
+    backupImportedAlert: "备份导入成功，sing-box 和 TProxy 已就绪。",
+    backupImportFailed: "备份导入失败，当前配置仍在使用。",
     updatingRules: "正在更新分流规则",
     ruleUpdateRunning: "正在更新，请稍候。",
     ruleUpdateSlow: "更新较慢，旧规则仍在使用，不影响 sing-box。",
@@ -257,6 +277,8 @@ const translations = {
     tproxySyncFailed: "TProxy 同步失败，sing-box 仍在运行。",
     maintenance: "维护",
     maintenanceNote: "规则集更新与 TProxy 状态",
+    backupTitle: "备份与恢复",
+    backupNote: "导出或恢复 UI 管理的规则、节点和分流设置。",
     ruleUpdateTitle: "分流规则更新",
     ruleUpdateDetails: "更新明细",
     updatedRules: "已更新",
@@ -393,6 +415,8 @@ function updateButtons() {
   $("restartTproxyBtn").disabled = busy;
   $("restartUiBtn").disabled = busy;
   $("syncTproxyBtn").disabled = busy;
+  $("exportBackupBtn").disabled = busy;
+  $("importBackupBtn").disabled = busy;
   $("updateRulesBtn").disabled = busy;
   $("saveBtn").disabled = busy || !dirty;
   $("nodeSubmit").disabled = busy || Boolean(editingNodeTag && !nodeEditChanged);
@@ -838,6 +862,80 @@ async function syncTproxy() {
   } catch (error) {
     finishActionButton("syncTproxyBtn", "actionFailed", "failed", "syncTproxy");
     setStatus(`${t("tproxySyncFailed")} ${error.message}`, "bad");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function exportBackup() {
+  setBusy(true);
+  pulseActionButton("exportBackupBtn", "exportingBackup");
+  setStatus(t("exportingBackup"));
+  try {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch("/api/backup/export", { headers });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `sing-box-gateway-ui-backup-${Date.now()}.json`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    finishActionButton("exportBackupBtn", "actionDone", "done", "exportBackup");
+    setStatus(t("backupExported"), "ok");
+    window.alert(t("backupExportedAlert"));
+  } catch (error) {
+    finishActionButton("exportBackupBtn", "actionFailed", "failed", "exportBackup");
+    setStatus(error.message, "bad");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function chooseBackupFile() {
+  $("backupFileInput").value = "";
+  $("backupFileInput").click();
+}
+
+async function importBackupFromFile(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  setBusy(true);
+  pulseActionButton("importBackupBtn", "importingBackup");
+  setStatus(t("importingBackup"));
+  try {
+    const payload = JSON.parse(await file.text());
+    const result = await api("/api/backup/import", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    state = result.state;
+    maintenance = result.maintenance || maintenance;
+    await loadProxyInfo(true);
+    setDirty(false);
+    render();
+    if (result.tproxySync && result.tproxySync.code !== 0) {
+      finishActionButton("importBackupBtn", "actionFailed", "failed", "importBackup");
+      setStatus(`${t("backupImported")}；${t("tproxySyncFailed")}`, "bad");
+      return;
+    }
+    finishActionButton("importBackupBtn", "actionDone", "done", "importBackup");
+    setStatus(`${t("backupImported")}；${t("delayUpdated")}`, "ok");
+    window.alert(t("backupImportedAlert"));
+  } catch (error) {
+    finishActionButton("importBackupBtn", "actionFailed", "failed", "importBackup");
+    setStatus(error.message || t("backupImportFailed"), "bad");
   } finally {
     setBusy(false);
   }
@@ -1501,6 +1599,9 @@ $("restartSingboxBtn").addEventListener("click", restart);
 $("restartTproxyBtn").addEventListener("click", restartTproxy);
 $("restartUiBtn").addEventListener("click", restartUi);
 $("syncTproxyBtn").addEventListener("click", syncTproxy);
+$("exportBackupBtn").addEventListener("click", exportBackup);
+$("importBackupBtn").addEventListener("click", chooseBackupFile);
+$("backupFileInput").addEventListener("change", importBackupFromFile);
 $("updateRulesBtn").addEventListener("click", updateRuleSets);
 $("brandLink").addEventListener("click", goNodes);
 $("brandLink").addEventListener("keydown", (event) => {

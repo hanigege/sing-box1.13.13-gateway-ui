@@ -151,6 +151,17 @@
               <button id="updateRulesBtn" type="button" data-i18n="updateRules">Update rules</button>
             </div>
           </div>
+          <section class="backup-panel" aria-label="Backup and restore">
+            <div>
+              <h3 data-i18n="backupTitle">Backup</h3>
+              <p data-i18n="backupNote">Export or restore the UI-managed configuration.</p>
+            </div>
+            <div class="backup-actions">
+              <button id="exportBackupBtn" class="secondary-btn" type="button" data-i18n="exportBackup">Export backup</button>
+              <button id="importBackupBtn" class="secondary-btn" type="button" data-i18n="importBackup">Import backup</button>
+              <input id="backupFileInput" class="hidden" type="file" accept="application/json,.json" />
+            </div>
+          </section>
           <div id="maintenanceRows" class="maintenance-rows"></div>
         </section>
       </section>
