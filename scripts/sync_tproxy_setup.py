@@ -45,8 +45,6 @@ def main():
         print("IPv6 router advertisement enabled for LAN clients.")
     else:
         print("IPv6 router advertisement is disabled by default.")
-    if sets.get("nodeServerIpNetworks"):
-        print("Node server bypass:", ", ".join(sets["nodeServerIpNetworks"]))
     return 0
 
 

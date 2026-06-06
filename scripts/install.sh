@@ -103,8 +103,7 @@ curl_text_first() {
   local url tmp
   tmp="$(mktemp)"
   for url in "$@"; do
-    echo "尝试下载: $url" >&2
-    if curl -fsSL --connect-timeout 10 --max-time 60 "$url" -o "$tmp"; then
+    if curl -fsSL --connect-timeout 10 --max-time 60 "$url" -o "$tmp" 2>/dev/null; then
       cat "$tmp"
       rm -f "$tmp"
       return 0
