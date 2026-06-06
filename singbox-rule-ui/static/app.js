@@ -1465,6 +1465,7 @@ function addEntry(event) {
 }
 
 async function save() {
+  syncDraftSettings(false);
   if (!dirty) {
     setStatus(t("noChanges"));
     return;
@@ -1624,18 +1625,28 @@ function syncAutoSettings() {
   setStatus(t("changed"));
 }
 
+function syncFakeipSettings(markDirty = true) {
+  state.groups.fakeip = state.groups.fakeip || {};
+  state.groups.fakeip.inet4_range = $("fakeipV4").value.trim();
+  state.groups.fakeip.inet6_range = $("fakeipV6").value.trim();
+  if (markDirty) {
+    setDirty(true);
+    setStatus(t("changed"));
+  }
+}
+
+function syncDraftSettings(markDirty = false) {
+  if (active !== "nodes") return;
+  syncFakeipSettings(markDirty);
+}
+
 ["autoUrl", "autoInterval", "autoTolerance"].forEach((id) => {
   $(id).addEventListener("input", syncAutoSettings);
   $(id).addEventListener("change", syncAutoSettings);
 });
 ["fakeipV4", "fakeipV6"].forEach((id) => {
-  $(id).addEventListener("change", () => {
-    state.groups.fakeip = state.groups.fakeip || {};
-    state.groups.fakeip.inet4_range = $("fakeipV4").value.trim();
-    state.groups.fakeip.inet6_range = $("fakeipV6").value.trim();
-    setDirty(true);
-    setStatus(t("changed"));
-  });
+  $(id).addEventListener("input", () => syncFakeipSettings(true));
+  $(id).addEventListener("change", () => syncFakeipSettings(true));
 });
 $("proxyDefault").addEventListener("change", () => {
   state.groups.proxy = state.groups.proxy || {};

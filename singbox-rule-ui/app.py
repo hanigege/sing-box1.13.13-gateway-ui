@@ -246,14 +246,17 @@ def normalize_non_negative_number(value, default=0):
     return number
 
 
-def normalize_cidr(value, default=None):
+def normalize_cidr(value, default=None, strict=False):
     cidr = str(value or "").strip()
     if not cidr:
         return default
     try:
-        return str(ipaddress.ip_network(cidr, strict=False))
+        return str(ipaddress.ip_network(cidr, strict=strict))
     except Exception as exc:
-        raise ValueError(f"Invalid CIDR: {value}") from exc
+        hint = ""
+        if strict:
+            hint = "; use a network address, for example 28.0.0.0/8"
+        raise ValueError(f"Invalid CIDR: {value}{hint}") from exc
 
 
 def normalize_node(raw):
@@ -1656,10 +1659,12 @@ def normalize_payload_groups(raw_groups, nodes=None):
             groups["fakeip"]["inet4_range"] = normalize_cidr(
                 fakeip.get("inet4_range", groups["fakeip"]["inet4_range"]),
                 groups["fakeip"]["inet4_range"],
+                strict=True,
             )
             groups["fakeip"]["inet6_range"] = normalize_cidr(
                 fakeip.get("inet6_range", groups["fakeip"]["inet6_range"]),
                 groups["fakeip"]["inet6_range"],
+                strict=True,
             )
         ddns = raw_groups.get("ddns")
         if isinstance(ddns, dict):
