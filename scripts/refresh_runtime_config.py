@@ -2,10 +2,12 @@
 import json
 import ipaddress
 import subprocess
+import sys
 from pathlib import Path
 
 
 CONFIG_PATH = Path("/etc/sing-box/config.json")
+APP_DIR = Path("/opt/singbox-rule-ui")
 
 
 def default_lan_ip():
@@ -92,14 +94,15 @@ def add_inbound_tag(config, tag):
                 rule["inbound"] = ["dns-in", tag]
 
 
-def main():
-    if not CONFIG_PATH.exists():
-        return 0
-    lan_ip = default_lan_ip()
-    ipv6_listen = preferred_ipv6_listener(lan_ip)
-    config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    changed = False
+def render_managed_config():
+    sys.path.insert(0, str(APP_DIR))
+    from app import RULE_DIR, load_groups, load_nodes, render_config
 
+    return render_config(nodes=load_nodes(), groups=load_groups(), rule_dir=RULE_DIR)
+
+
+def apply_runtime_listeners(config, lan_ip, ipv6_listen):
+    changed = False
     inbounds = config.get("inbounds", []) or []
     kept_inbounds = []
     for inbound in inbounds:
@@ -131,13 +134,25 @@ def main():
     if clash.get("external_controller") != controller:
         clash["external_controller"] = controller
         changed = True
+    return changed
 
-    if changed:
-        CONFIG_PATH.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+def main():
+    if not CONFIG_PATH.exists():
+        return 0
+    lan_ip = default_lan_ip()
+    ipv6_listen = preferred_ipv6_listener(lan_ip)
+    previous = CONFIG_PATH.read_text(encoding="utf-8")
+    config = render_managed_config()
+    listener_changed = apply_runtime_listeners(config, lan_ip, ipv6_listen)
+    rendered = json.dumps(config, indent=2, ensure_ascii=False) + "\n"
+    if rendered != previous:
+        CONFIG_PATH.write_text(rendered, encoding="utf-8")
+        print(f"Rendered sing-box config and updated listeners for {lan_ip}.")
+    elif listener_changed:
         print(f"Updated sing-box listeners for {lan_ip}.")
     else:
-        print(f"sing-box listeners already match {lan_ip}.")
-
+        print(f"sing-box config already rendered and listeners match {lan_ip}.")
     return 0
 
 
