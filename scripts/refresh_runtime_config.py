@@ -94,14 +94,11 @@ def add_inbound_tag(config, tag):
                 rule["inbound"] = ["dns-in", tag]
 
 
-def load_manager_state():
+def render_managed_config():
     sys.path.insert(0, str(APP_DIR))
-    from app import RULE_DIR, load_groups, load_nodes, render_config, sync_tproxy
+    from app import RULE_DIR, load_groups, load_nodes, render_config
 
-    nodes = load_nodes()
-    groups = load_groups()
-    config = render_config(nodes=nodes, groups=groups, rule_dir=RULE_DIR)
-    return nodes, groups, config, sync_tproxy
+    return render_config(nodes=load_nodes(), groups=load_groups(), rule_dir=RULE_DIR)
 
 
 def apply_runtime_listeners(config, lan_ip, ipv6_listen):
@@ -146,7 +143,7 @@ def main():
     lan_ip = default_lan_ip()
     ipv6_listen = preferred_ipv6_listener(lan_ip)
     previous = CONFIG_PATH.read_text(encoding="utf-8")
-    nodes, groups, config, sync_tproxy = load_manager_state()
+    config = render_managed_config()
     listener_changed = apply_runtime_listeners(config, lan_ip, ipv6_listen)
     rendered = json.dumps(config, indent=2, ensure_ascii=False) + "\n"
     if rendered != previous:
@@ -156,11 +153,6 @@ def main():
         print(f"Updated sing-box listeners for {lan_ip}.")
     else:
         print(f"sing-box config already rendered and listeners match {lan_ip}.")
-    tproxy = sync_tproxy(nodes=nodes, groups=groups)
-    if tproxy.get("code") != 0:
-        stderr = tproxy.get("stderr") or tproxy.get("stdout") or "unknown error"
-        raise RuntimeError(f"TProxy sync failed: {stderr}")
-    print("TProxy bypass rules synced.")
     return 0
 
 
