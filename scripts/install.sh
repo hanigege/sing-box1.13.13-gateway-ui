@@ -262,14 +262,53 @@ disable_systemd_resolved_stub() {
   if [ -e /etc/resolv.conf ] && [ ! -e "$MANAGER_DIR/resolv.conf.before-sing-box" ]; then
     cp -a /etc/resolv.conf "$MANAGER_DIR/resolv.conf.before-sing-box" || true
   fi
-  touch /etc/systemd/resolved.conf
-  if grep -qE '^[#[:space:]]*DNSStubListener=' /etc/systemd/resolved.conf; then
-    sed -i 's/^[#[:space:]]*DNSStubListener=.*/DNSStubListener=no/' /etc/systemd/resolved.conf
-  else
-    printf '\nDNSStubListener=no\n' >> /etc/systemd/resolved.conf
-  fi
-  systemctl reload-or-restart systemd-resolved.service >/dev/null 2>&1 || true
-  echo "systemd-resolved DNS stub disabled; port 53 is reserved for sing-box."
+  python3 - <<'PY'
+from pathlib import Path
+
+path = Path("/etc/systemd/resolved.conf")
+text = path.read_text(encoding="utf-8") if path.exists() else ""
+lines = text.splitlines()
+out = []
+in_resolve = False
+resolve_seen = False
+stub_written = False
+
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        if in_resolve and not stub_written:
+            out.append("DNSStubListener=no")
+            stub_written = True
+        in_resolve = stripped.lower() == "[resolve]"
+        resolve_seen = resolve_seen or in_resolve
+        out.append(line)
+        continue
+    if in_resolve and stripped.split("=", 1)[0].strip().lstrip("#").strip() == "DNSStubListener":
+        if not stub_written:
+            out.append("DNSStubListener=no")
+            stub_written = True
+        continue
+    out.append(line)
+
+if resolve_seen:
+    if in_resolve and not stub_written:
+        out.append("DNSStubListener=no")
+else:
+    if out and out[-1].strip():
+        out.append("")
+    out.extend(["[Resolve]", "DNSStubListener=no"])
+
+path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+PY
+  systemctl restart systemd-resolved.service >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5; do
+    sleep 1
+    case "$(port53_conflicts)" in
+      *systemd-resolve*|*systemd-resolved*) ;;
+      *) echo "Released local port 53 for sing-box."; return ;;
+    esac
+  done
+  echo "WARN: systemd-resolved still holds port 53 after restart." >&2
 }
 
 ensure_dns_port_available() {
@@ -289,7 +328,7 @@ ensure_dns_port_available() {
       ;;
     *)
       echo "Port 53 is already in use by: $owner" >&2
-      echo "Please stop that DNS service first, or free port 53 before installing." >&2
+      echo "Please free port 53 before installing. If it is systemd-resolved, the installer already tried DNSStubListener=no and service restart." >&2
       echo "The installer will not modify /etc/resolv.conf or replace your DNS upstreams automatically." >&2
       exit 1
       ;;
@@ -343,7 +382,7 @@ main() {
   refresh_tproxy_after_start
   echo
   echo "Installed."
-  echo "Host DNS was not changed. Configure client/router DNS manually if needed."
+  echo "Host resolver was left unchanged. Configure client/router resolver manually if needed."
   sing-box-gateway-info
 }
 
