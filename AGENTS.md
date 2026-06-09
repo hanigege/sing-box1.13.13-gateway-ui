@@ -18,6 +18,7 @@ This repository is a production-oriented sing-box gateway UI and installer. Trea
 ### 修改前
 
 - 先阅读相关调用链、配置来源、保存路径和启动路径，不允许只看报错位置就局部补丁式修改。
+- 生产机已经暴露出来的故障，必须优先在生产边界定位、修复并验证；确认生产恢复后，再把同一逻辑干净回写到仓库，避免仓库修了但现场仍然坏。
 - 先确认现有行为是否被 `README.md`、脚本输出、模板配置或前端交互依赖。
 - 先检查 `git status --short`，区分用户已有改动和本次需要改动的文件。
 - 不确定生产影响时，优先扩大阅读范围，而不是扩大修改范围。
@@ -75,6 +76,7 @@ This repository is a production-oriented sing-box gateway UI and installer. Trea
 - `radvd` behavior must remain opt-in through an explicit environment variable.
 - TProxy should capture FakeIP ranges and avoid proxying node server IPs back through itself.
 - IPv4 and IPv6 FakeIP ranges must stay synchronized across DNS fakeip server settings, route rules, and TProxy rules.
+- Auto must be an unattended safety path, not a manual UI action. The default urltest interval should stay short enough for gateway failover, and Auto must interrupt existing connections when its selected node changes.
 
 ## UI Rules
 

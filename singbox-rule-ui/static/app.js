@@ -1119,7 +1119,7 @@ function renderNodes() {
   state.groups.auto = state.groups.auto || {};
   state.groups.fakeip = state.groups.fakeip || {};
   if (document.activeElement !== $("autoUrl")) $("autoUrl").value = state.groups.auto.url || "https://www.gstatic.com/generate_204";
-  if (document.activeElement !== $("autoInterval")) $("autoInterval").value = state.groups.auto.interval || "2m";
+  if (document.activeElement !== $("autoInterval")) $("autoInterval").value = state.groups.auto.interval || "30s";
   if (document.activeElement !== $("autoTolerance")) $("autoTolerance").value = state.groups.auto.tolerance ?? 50;
   if (document.activeElement !== $("fakeipV4")) $("fakeipV4").value = state.groups.fakeip.inet4_range || "28.0.0.0/8";
   if (document.activeElement !== $("fakeipV6")) $("fakeipV6").value = state.groups.fakeip.inet6_range || "2001:2::/64";
@@ -1363,6 +1363,7 @@ async function refreshDelays() {
   setStatus(t("testingDelay"));
   try {
     await loadProxyInfo(true);
+    await loadProxyInfo(false);
     render();
     setStatus(t("delayUpdated"), "ok");
   } catch (error) {

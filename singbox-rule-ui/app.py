@@ -376,8 +376,9 @@ def extract_initial_manager_data(config):
         },
         "auto": {
             "url": (auto or {}).get("url", "https://www.gstatic.com/generate_204"),
-            "interval": (auto or {}).get("interval", "2m"),
+            "interval": (auto or {}).get("interval", "30s"),
             "tolerance": (auto or {}).get("tolerance", 50),
+            "interrupt_exist_connections": (auto or {}).get("interrupt_exist_connections", True),
         },
         "direct": direct or {"type": "direct", "tag": "direct"},
         "block": block or {"type": "block", "tag": "block"},
@@ -418,8 +419,9 @@ def load_groups():
     groups["proxy"].setdefault("default", "Auto")
     groups["proxy"].setdefault("interrupt_exist_connections", True)
     groups["auto"].setdefault("url", "https://www.gstatic.com/generate_204")
-    groups["auto"].setdefault("interval", "2m")
+    groups["auto"].setdefault("interval", "30s")
     groups["auto"].setdefault("tolerance", 50)
+    groups["auto"].setdefault("interrupt_exist_connections", True)
     groups["fakeip"].setdefault("tag", "fakeip-dns")
     groups["fakeip"].setdefault("inet4_range", "28.0.0.0/8")
     groups["fakeip"].setdefault("inet6_range", "2001:2::/64")
@@ -465,8 +467,10 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR):
         "tag": "Auto",
         "outbounds": tags,
         "url": groups.get("auto", {}).get("url", "https://www.gstatic.com/generate_204"),
-        "interval": groups.get("auto", {}).get("interval", "2m"),
+        "interval": groups.get("auto", {}).get("interval", "30s"),
         "tolerance": groups.get("auto", {}).get("tolerance", 50),
+        # Auto 切换节点时必须断开已有入站连接，否则旧连接会继续粘在失效节点上。
+        "interrupt_exist_connections": bool(groups.get("auto", {}).get("interrupt_exist_connections", True)),
     }
     direct = groups.get("direct") or {"type": "direct", "tag": "direct"}
     block = groups.get("block") or {"type": "block", "tag": "block"}
@@ -1718,19 +1722,32 @@ def test_node_delay(tag, url=None, timeout_ms=5000):
     return {"tag": tag, "ok": isinstance(delay, int), "delay": delay if isinstance(delay, int) else None, "error": None if isinstance(delay, int) else "No delay returned"}
 
 
+def refresh_proxy_delays():
+    nodes = load_nodes()
+    tags = enabled_node_tags(nodes)
+    values = {}
+    api_error = None
+    # 先请求 Auto 自身测速，让 sing-box 的 urltest 按真实运行态更新 now；单测节点只用于 UI 展示。
+    auto_probe = test_node_delay("Auto", timeout_ms=8000) if tags else None
+    if auto_probe and not auto_probe["ok"]:
+        api_error = auto_probe.get("error")
+    for tag in tags:
+        item = test_node_delay(tag)
+        values[tag] = item
+        if not item["ok"] and not api_error:
+            api_error = item.get("error")
+    return {"available": api_error is None, "error": api_error, "delays": values, "autoProbe": auto_probe}
+
+
 def get_node_delays(test=False):
+    if test:
+        return refresh_proxy_delays()
     nodes = load_nodes()
     tags = enabled_node_tags(nodes)
     values = {}
     api_error = None
     for tag in tags:
-        if test:
-            item = test_node_delay(tag)
-            values[tag] = item
-            if not item["ok"] and not api_error:
-                api_error = item.get("error")
-        else:
-            values[tag] = {"tag": tag, "ok": True, "delay": read_delay_history(tag), "error": None}
+        values[tag] = {"tag": tag, "ok": True, "delay": read_delay_history(tag), "error": None}
     return {"available": api_error is None, "error": api_error, "delays": values}
 
 
@@ -1757,6 +1774,9 @@ def normalize_payload_groups(raw_groups, nodes=None):
             groups["auto"]["url"] = normalize_url(auto.get("url", groups["auto"]["url"]), groups["auto"]["url"])
             groups["auto"]["interval"] = str(auto.get("interval", groups["auto"]["interval"])).strip() or groups["auto"]["interval"]
             groups["auto"]["tolerance"] = normalize_non_negative_number(auto.get("tolerance", groups["auto"]["tolerance"]), 50)
+            groups["auto"]["interrupt_exist_connections"] = bool(
+                auto.get("interrupt_exist_connections", groups["auto"].get("interrupt_exist_connections", True))
+            )
         fakeip = raw_groups.get("fakeip")
         if isinstance(fakeip, dict):
             groups["fakeip"]["inet4_range"] = normalize_cidr(

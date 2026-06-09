@@ -279,7 +279,7 @@ def main():
     default_node = nodes[0]["outbound"]["tag"]
     groups = {
         "proxy": {"default": default_node, "interrupt_exist_connections": True},
-        "auto": {"url": "https://www.gstatic.com/generate_204", "interval": "2m", "tolerance": 50},
+        "auto": {"url": "https://www.gstatic.com/generate_204", "interval": "30s", "tolerance": 50},
         "direct": {"type": "direct", "tag": "direct"},
         "block": {"type": "block", "tag": "block"},
         "fakeip": {"tag": "fakeip-dns", "inet4_range": fake4, "inet6_range": fake6},
