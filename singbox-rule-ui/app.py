@@ -1345,8 +1345,11 @@ sysctl -w "net.ipv6.conf.${{IFACE}}.forwarding=1" >/dev/null 2>&1 || true
 sysctl -w "net.ipv6.conf.${{IFACE}}.accept_ra=2" >/dev/null 2>&1 || true
 sysctl -w "net.ipv6.conf.${{IFACE}}.accept_ra_defrtr=1" >/dev/null 2>&1 || true
 
+# IPv4/IPv6 FakeIP 都必须把 TProxy 标记包送回本机 lo；缺少 IPv6 表会让浏览器拿到 AAAA FakeIP 后仍无法进入 sing-box。
 ip rule add fwmark "${{TPROXY_MARK}}" table "${{TPROXY_TABLE}}" priority 100 2>/dev/null || true
+ip -6 rule add fwmark "${{TPROXY_MARK}}" table "${{TPROXY_TABLE}}" priority 100 2>/dev/null || true
 ip route replace local 0.0.0.0/0 dev lo table "${{TPROXY_TABLE}}"
+ip -6 route replace local ::/0 dev lo table "${{TPROXY_TABLE}}"
 
 nft delete table inet singbox_tproxy 2>/dev/null || true
 nft -f - <<NFT
