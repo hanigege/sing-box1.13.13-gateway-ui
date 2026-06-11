@@ -108,7 +108,9 @@ const translations = {
     finalResult: "Final",
     ruleFinalUpdated: "Rule sets updated and checked",
     ruleFinalChecked: "Rule sets checked",
-    ruleFinalSkippedSafe: "Rule source unavailable; local rules kept and checked",
+    ruleFinalSkippedSafe: "Using local rule cache; gateway cannot reach rule source directly",
+    tproxySummaryTitle: "TProxy summary",
+    tproxyDetailsTitle: "TProxy details",
     updateHealthOk: "Core rule sets are current. Optional service IP lists kept their cached copies.",
     optionalCacheOk: "Optional service IP lists are unavailable upstream, so cached copies are used. No action needed.",
     updatedCount: "Updated files",
@@ -301,7 +303,9 @@ const translations = {
     finalResult: "最终结果",
     ruleFinalUpdated: "分流规则已更新并通过检查",
     ruleFinalChecked: "分流规则已通过检查",
-    ruleFinalSkippedSafe: "规则源暂时不可达，已沿用本地规则并通过检查",
+    ruleFinalSkippedSafe: "已使用本地规则缓存；网关机当前无法直连规则源",
+    tproxySummaryTitle: "TProxy 摘要",
+    tproxyDetailsTitle: "TProxy 详情",
     updateHealthOk: "核心分流规则已更新；可选服务 IP 列表沿用缓存，不影响正常分流。",
     optionalCacheOk: "这些可选服务 IP 上游暂时没有文件，已自动沿用旧缓存，无需处理。",
     updatedCount: "更新文件数",
@@ -781,6 +785,31 @@ function formatRuleFinal(summary) {
   return text || t("unknown");
 }
 
+function isRuleCacheSafe(summary) {
+  return (summary?.status || summary?.final || "") === "skipped_safe";
+}
+
+function renderMaintenanceDetails(titleText, items, note = "") {
+  const details = document.createElement("details");
+  details.className = "maintenance-details";
+  const summary = document.createElement("summary");
+  summary.textContent = titleText;
+  details.appendChild(summary);
+  const body = document.createElement("div");
+  body.className = "maintenance-details-body";
+  for (const item of items) {
+    body.appendChild(renderMaintenanceItem(item[0], item[1], item[2] || ""));
+  }
+  if (note) {
+    const warning = document.createElement("p");
+    warning.className = "maintenance-note";
+    warning.textContent = note;
+    body.appendChild(warning);
+  }
+  details.appendChild(body);
+  return details;
+}
+
 function renderMaintenance() {
   const info = maintenance || {};
   const rule = info.ruleUpdate || {};
@@ -800,7 +829,7 @@ function renderMaintenance() {
   const hasDetails = Boolean((summary.updated || []).length || (summary.kept || []).length || (summary.skipped || []).length || (summary.errors || []).length || summary.final);
   const keptCount = (summary.kept || []).length;
   const errorCount = (summary.errors || []).length;
-  const finalTone = errorCount ? "bad" : summary.requiredOk ? "good" : summary.final ? "soft" : "";
+  const finalTone = errorCount ? "bad" : isRuleCacheSafe(summary) ? "warn" : summary.requiredOk ? "good" : summary.final ? "soft" : "";
   rows.appendChild(renderMaintenanceCard(t("ruleUpdateDetails"), hasDetails ? [
     [t("finalResult"), formatRuleFinal(summary), finalTone],
     [t("updatedCount"), String((summary.updated || []).length), "good"],
@@ -810,14 +839,16 @@ function renderMaintenance() {
   ] : [
     [t("ruleUpdateDetails"), t("noUpdateDetails")],
   ]));
-  rows.appendChild(renderMaintenanceCard(t("tproxyTitle"), [
+  rows.appendChild(renderMaintenanceCard(t("tproxySummaryTitle"), [
     [t("tproxyService"), tproxy.serviceActive, statusTone(tproxy.serviceActive)],
     [t("defaultInterface"), tproxy.defaultInterface],
     [t("currentIpv4Prefix"), tproxy.currentIpv4Prefixes],
     [t("currentIpv6Prefix"), tproxy.currentIpv6Prefixes],
-    [t("scriptIpv6Prefix"), tproxy.scriptIpv6Prefixes, tproxy.ipv6PrefixMatches ? "good" : "warn"],
     [t("fakeipRanges"), [tproxy.planned?.fakeip4, tproxy.planned?.fakeip6].filter(Boolean)],
     [t("nodeServerIps"), formatNodeServers(tproxy.outboundServers) || tproxy.outboundServerIps],
+  ]));
+  rows.appendChild(renderMaintenanceDetails(t("tproxyDetailsTitle"), [
+    [t("scriptIpv6Prefix"), tproxy.scriptIpv6Prefixes, tproxy.ipv6PrefixMatches ? "good" : "warn"],
     [t("plannedBypass4"), tproxy.planned?.bypass4],
     [t("plannedBypass6"), tproxy.planned?.bypass6],
   ], `${t("tproxyPolicy")}${tproxy.ipv6PrefixMatches === false ? ` ${t("prefixMismatch")}` : ""}`));

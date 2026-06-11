@@ -542,6 +542,26 @@ select {
   padding: 12px;
 }
 
+.maintenance-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.maintenance-details summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.maintenance-details-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .maintenance-item {
   display: grid;
   grid-template-columns: 128px 1fr;
