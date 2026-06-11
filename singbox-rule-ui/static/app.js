@@ -106,6 +106,9 @@ const translations = {
     skippedRules: "Skipped",
     errorDetails: "Needs attention",
     finalResult: "Final",
+    ruleFinalUpdated: "Rule sets updated and checked",
+    ruleFinalChecked: "Rule sets checked",
+    ruleFinalSkippedSafe: "Rule source unavailable; local rules kept and checked",
     updateHealthOk: "Core rule sets are current. Optional service IP lists kept their cached copies.",
     optionalCacheOk: "Optional service IP lists are unavailable upstream, so cached copies are used. No action needed.",
     updatedCount: "Updated files",
@@ -296,6 +299,9 @@ const translations = {
     skippedRules: "已跳过",
     errorDetails: "需要处理",
     finalResult: "最终结果",
+    ruleFinalUpdated: "分流规则已更新并通过检查",
+    ruleFinalChecked: "分流规则已通过检查",
+    ruleFinalSkippedSafe: "规则源暂时不可达，已沿用本地规则并通过检查",
     updateHealthOk: "核心分流规则已更新；可选服务 IP 列表沿用缓存，不影响正常分流。",
     optionalCacheOk: "这些可选服务 IP 上游暂时没有文件，已自动沿用旧缓存，无需处理。",
     updatedCount: "更新文件数",
@@ -764,6 +770,17 @@ function ruleNames(items) {
     .join(", ");
 }
 
+function formatRuleFinal(summary) {
+  const status = summary?.status || summary?.final || "";
+  if (status === "updated") return t("ruleFinalUpdated");
+  if (status === "checked") return t("ruleFinalChecked");
+  if (status === "skipped_safe") return t("ruleFinalSkippedSafe");
+  const text = String(summary?.final || "");
+  if (text.includes("skipped this update safely")) return t("ruleFinalSkippedSafe");
+  if (text.includes("config checked")) return t("ruleFinalChecked");
+  return text || t("unknown");
+}
+
 function renderMaintenance() {
   const info = maintenance || {};
   const rule = info.ruleUpdate || {};
@@ -785,7 +802,7 @@ function renderMaintenance() {
   const errorCount = (summary.errors || []).length;
   const finalTone = errorCount ? "bad" : summary.requiredOk ? "good" : summary.final ? "soft" : "";
   rows.appendChild(renderMaintenanceCard(t("ruleUpdateDetails"), hasDetails ? [
-    [t("finalResult"), summary.final || t("unknown"), finalTone],
+    [t("finalResult"), formatRuleFinal(summary), finalTone],
     [t("updatedCount"), String((summary.updated || []).length), "good"],
     [t("optionalCount"), keptCount ? `${keptCount} · ${ruleNames(summary.kept)}` : "0", keptCount ? "soft" : "good"],
     [t("keptRules"), keptCount ? t("optionalCacheOk") : "0", keptCount ? "soft" : "good"],

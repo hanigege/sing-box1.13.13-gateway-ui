@@ -1154,7 +1154,7 @@ def recent_unit_logs(unit, lines=80):
 
 
 def rule_update_summary(text):
-    summary = {"updated": [], "kept": [], "skipped": [], "errors": [], "final": "", "requiredOk": False}
+    summary = {"updated": [], "kept": [], "skipped": [], "errors": [], "final": "", "status": "", "requiredOk": False}
     for raw in (text or "").splitlines():
         line = raw.strip()
         message = re.sub(r"^.*update-sing-box-rules-jsdelivr\[\d+\]:\s*", "", line)
@@ -1178,10 +1178,16 @@ def rule_update_summary(text):
         elif "timed out" in message:
             summary["errors"].append(message)
         elif "skipped this update safely" in message:
-            summary["final"] = message
+            summary["final"] = "skipped_safe"
+            summary["status"] = "skipped_safe"
+            summary["requiredOk"] = True
+        elif "service restart skipped" in message and "config checked" in message:
+            summary["final"] = "checked"
+            summary["status"] = summary["status"] or "checked"
             summary["requiredOk"] = True
         elif "sing-box rule sets updated" in message:
-            summary["final"] = message
+            summary["final"] = "updated"
+            summary["status"] = "updated"
     for key in ("updated", "kept", "skipped", "errors"):
         seen = []
         for item in summary[key]:

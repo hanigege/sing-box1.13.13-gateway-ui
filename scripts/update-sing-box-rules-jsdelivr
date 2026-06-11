@@ -193,6 +193,7 @@ prune_legacy_unused_rules() {
 
 finish_checked_update() {
   local restart_reason="${1:-sing-box rule sets updated}"
+  local restart="${2:-$RESTART_SERVICE}"
   prune_legacy_unused_rules
 
   if ! "$SING_BOX" check -c "$CONFIG"; then
@@ -202,7 +203,7 @@ finish_checked_update() {
     exit 1
   fi
 
-  if [ "$RESTART_SERVICE" = "0" ]; then
+  if [ "$restart" = "0" ]; then
     echo "$restart_reason and config checked. Service restart skipped."
     exit 0
   fi
@@ -227,7 +228,7 @@ if ! select_mirrors; then
     # 定时更新不能因为外部镜像慢而长时间阻塞；已有规则可用时保留现状，下次再试。
     echo "WARN: no rule mirror passed quick probe; existing required rule files are present, skipped this update safely" >&2
     echo "WARN: set RULE_UPDATE_FORCE=1, RULE_UPDATE_RAW_MIRRORS, or RULE_UPDATE_CDN_MIRRORS to force a retry" >&2
-    finish_checked_update "sing-box rule update skipped safely"
+    finish_checked_update "sing-box rule update skipped safely" "0"
   fi
   echo "WARN: no rule mirror passed quick probe; forcing configured mirrors because required rule files are missing" >&2
   echo "WARN: system DNS was not changed; check /etc/resolv.conf, firewall, RULE_UPDATE_RAW_MIRRORS, or RULE_UPDATE_CDN_MIRRORS if downloads fail" >&2

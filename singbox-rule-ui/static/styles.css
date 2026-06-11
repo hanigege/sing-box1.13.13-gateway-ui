@@ -560,10 +560,11 @@ select {
 
 .maintenance-item strong {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   color: var(--text);
   font-size: 12px;
   font-weight: 750;
+  line-height: 1.35;
 }
 
 .maintenance-item.good strong {
