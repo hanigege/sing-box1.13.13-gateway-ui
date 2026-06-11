@@ -35,16 +35,16 @@ IFS=" " read -r -a CDN_MIRRORS <<< "${RULE_UPDATE_CDN_MIRRORS:-${DEFAULT_CDN_MIR
 
 GEOSITE=(
   # 只下载运行配置真实引用的规则集；未引用的应用规则会增加定时更新噪音和维护成本。
-  speedtest geolocation-!cn
+  speedtest telegram geolocation-!cn
   cn icloud@cn apple@cn geolocation-cn
 )
 
-GEOIP_REQUIRED=(cn)
+GEOIP_REQUIRED=(cn telegram)
 LEGACY_UNUSED_GEOSITE=(
-  category-ai-chat-!cn youtube google telegram github cloudflare netflix facebook instagram tiktok
+  category-ai-chat-!cn youtube google github cloudflare netflix facebook instagram tiktok
   jetbrains spotify disney hbo amazon adobe steam category-pt@!cn category-cryptocurrency
 )
-LEGACY_UNUSED_GEOIP=(telegram netflix facebook)
+LEGACY_UNUSED_GEOIP=(netflix facebook)
 UPDATED_FILES=()
 BACKUP_DIR="$TMP_DIR/backup"
 NEW_DIR="$TMP_DIR/new"

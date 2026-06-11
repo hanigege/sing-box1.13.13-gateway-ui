@@ -70,7 +70,6 @@ LEGACY_APP_RULE_SETS = {
     "geosite-ai",
     "geosite-youtube",
     "geosite-google",
-    "geosite-telegram",
     "geosite-github",
     "geosite-cloudflare",
     "geosite-netflix",
@@ -86,7 +85,6 @@ LEGACY_APP_RULE_SETS = {
     "geosite-steam",
     "geosite-category-pt@!cn",
     "geosite-category-cryptocurrency",
-    "geoip-telegram",
     "geoip-netflix",
     "geoip-facebook",
 }
@@ -492,6 +490,7 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR):
     apply_ddns_dns_settings(config, groups)
     apply_fakeip_route_rule(config, groups)
     apply_direct_speedtest_route(config)
+    apply_direct_telegram_route(config)
     apply_fakeip_quic_policy(config, groups)
     apply_route_final_policy(config)
     proxy_default = groups.get("proxy", {}).get("default", "Auto")
@@ -573,6 +572,8 @@ def ensure_managed_rule_sets(config):
     existing = {item.get("tag") for item in rule_sets if isinstance(item, dict)}
     managed = [
         managed_binary_rule_set("geosite-speedtest", "/etc/sing-box/rules/geosite/speedtest.srs"),
+        managed_binary_rule_set("geosite-telegram", "/etc/sing-box/rules/geosite/telegram.srs"),
+        managed_binary_rule_set("geoip-telegram", "/etc/sing-box/rules/geoip/telegram.srs"),
     ]
     for item in managed:
         if item["tag"] in existing:
@@ -673,6 +674,46 @@ def apply_direct_speedtest_route(config):
             insert_at = index + 1
     # 测速流量必须排在 FakeIP 捕获前；否则域名先变成 FakeIP 后会被送进代理。
     rules.insert(insert_at, direct_rule)
+
+
+def apply_direct_telegram_route(config):
+    rules = config.setdefault("route", {}).setdefault("rules", [])
+    telegram_rule = {"rule_set": ["geosite-telegram", "geoip-telegram"], "outbound": "Proxy"}
+    cleaned = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            cleaned.append(rule)
+            continue
+        rule_set = rule.get("rule_set")
+        if rule.get("outbound") == "Proxy" and (
+            rule_set in ("geosite-telegram", "geoip-telegram")
+            or (isinstance(rule_set, list) and any(item in {"geosite-telegram", "geoip-telegram"} for item in rule_set))
+        ):
+            updated = dict(rule)
+            updated["rule_set"] = remove_rule_set_value(
+                remove_rule_set_value(rule_set, "geosite-telegram"),
+                "geoip-telegram",
+            )
+            if updated.get("rule_set") is None:
+                continue
+            cleaned.append(updated)
+            continue
+        cleaned.append(rule)
+    rules[:] = cleaned
+    insert_at = len(rules)
+    for index, rule in enumerate(rules):
+        if (
+            isinstance(rule, dict)
+            and rule.get("outbound") == "Proxy"
+            and isinstance(rule.get("ip_cidr"), list)
+            and any(str(item).startswith(("28.", "2001:2", "2408:")) for item in rule.get("ip_cidr", []))
+        ):
+            insert_at = index
+            break
+        if isinstance(rule, dict) and rule.get("rule_set") == "geosite-speedtest":
+            insert_at = index + 1
+    # Telegram 客户端常直接连接官方 IP 段，必须在 FakeIP 捕获和 UDP/443 阻断前先送代理。
+    rules.insert(insert_at, telegram_rule)
 
 
 def apply_fakeip_route_rule(config, groups):
