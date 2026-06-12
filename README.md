@@ -306,6 +306,12 @@ systemctl list-timers update-sing-box-rules-jsdelivr.timer
 sing-box-gateway-info
 ```
 
+Rule UI 的维护页可以调整分流规则自动更新周期、执行时间和小时级随机延迟。保存后 UI 会写入
+`/etc/systemd/system/update-sing-box-rules-jsdelivr.timer.d/ui-schedule.conf`，并执行
+`systemctl daemon-reload` 与重启 timer，使“下次自动更新”显示 systemd 实际生效的时间。
+这只改变 timer 调度，不改变 `/usr/local/sbin/update-sing-box-rules-jsdelivr` 更新脚本，也不会修改
+sing-box 主配置；常规规则刷新每周一次即可，需要立刻验证规则源时仍可点击“立即更新分流规则”。
+
 ## 安全
 
 不要把以下内容提交到公开仓库：

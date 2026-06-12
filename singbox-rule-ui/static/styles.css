@@ -971,6 +971,53 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+.rule-schedule-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(240px, 1fr) minmax(520px, 2fr);
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 14px;
+}
+
+.rule-schedule-panel h3 {
+  margin: 0 0 4px;
+}
+
+.rule-schedule-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.rule-schedule-form {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(132px, 1fr) minmax(150px, 1fr) minmax(118px, auto);
+  align-items: end;
+  gap: 10px;
+}
+
+.rule-schedule-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rule-schedule-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rule-schedule-form input,
+.rule-schedule-form select {
+  width: 100%;
+  min-height: 36px;
+}
+
 .maintenance-card {
   display: grid;
   gap: 8px;
@@ -1302,6 +1349,11 @@ input[type="checkbox"] {
   }
 
   .compact-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-schedule-panel,
+  .rule-schedule-form {
     grid-template-columns: 1fr;
   }
 

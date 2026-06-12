@@ -101,6 +101,16 @@ const translations = {
     actionDone: "Done",
     actionFailed: "Failed",
     updateRules: "Update rule sets",
+    saveRuleSchedule: "Save schedule",
+    savingRuleSchedule: "Saving schedule",
+    ruleScheduleSaved: "Rule update schedule saved",
+    ruleScheduleTitle: "Auto update schedule",
+    ruleScheduleNote: "Applies to the systemd timer only. Weekly is enough for normal rule-set refreshes.",
+    ruleScheduleFrequency: "Frequency",
+    ruleScheduleDaily: "Daily",
+    ruleScheduleWeekly: "Weekly",
+    ruleScheduleTime: "Time",
+    ruleScheduleDelay: "Random delay (hours)",
     syncTproxy: "Sync TProxy",
     exportBackup: "Export backup",
     importBackup: "Import backup",
@@ -330,6 +340,16 @@ const translations = {
     actionDone: "完成",
     actionFailed: "失败",
     updateRules: "立即更新分流规则",
+    saveRuleSchedule: "保存更新时间",
+    savingRuleSchedule: "正在保存更新时间",
+    ruleScheduleSaved: "分流规则自动更新时间已保存",
+    ruleScheduleTitle: "自动更新设置",
+    ruleScheduleNote: "只调整 systemd 定时器；常规规则刷新每周一次即可，手动立即更新不受影响。",
+    ruleScheduleFrequency: "更新周期",
+    ruleScheduleDaily: "每天",
+    ruleScheduleWeekly: "每周",
+    ruleScheduleTime: "执行时间",
+    ruleScheduleDelay: "随机延迟（小时）",
     syncTproxy: "同步 TProxy",
     exportBackup: "导出备份",
     importBackup: "导入备份",
@@ -852,6 +872,68 @@ function renderMaintenanceItem(label, value, tone = "") {
   return row;
 }
 
+function renderRuleUpdateSchedule(schedule = {}) {
+  const panel = document.createElement("section");
+  panel.className = "rule-schedule-panel";
+
+  const head = document.createElement("div");
+  const title = document.createElement("h3");
+  title.textContent = t("ruleScheduleTitle");
+  const note = document.createElement("p");
+  note.textContent = t("ruleScheduleNote");
+  head.append(title, note);
+
+  const form = document.createElement("div");
+  form.className = "rule-schedule-form";
+
+  const frequencyLabel = document.createElement("label");
+  const frequencyText = document.createElement("span");
+  frequencyText.textContent = t("ruleScheduleFrequency");
+  const frequency = document.createElement("select");
+  frequency.id = "ruleScheduleFrequencyInput";
+  for (const [value, labelKey] of [["weekly", "ruleScheduleWeekly"], ["daily", "ruleScheduleDaily"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = t(labelKey);
+    option.selected = (schedule.frequency || "weekly") === value;
+    frequency.appendChild(option);
+  }
+  frequencyLabel.append(frequencyText, frequency);
+
+  const timeLabel = document.createElement("label");
+  const timeText = document.createElement("span");
+  timeText.textContent = t("ruleScheduleTime");
+  const timeInput = document.createElement("input");
+  timeInput.id = "ruleScheduleTimeInput";
+  timeInput.type = "time";
+  timeInput.value = `${String(Number.isInteger(schedule.hour) ? schedule.hour : 4).padStart(2, "0")}:${String(Number.isInteger(schedule.minute) ? schedule.minute : 20).padStart(2, "0")}`;
+  timeLabel.append(timeText, timeInput);
+
+  const delayLabel = document.createElement("label");
+  const delayText = document.createElement("span");
+  delayText.textContent = t("ruleScheduleDelay");
+  const delayInput = document.createElement("input");
+  delayInput.id = "ruleScheduleDelayInput";
+  delayInput.type = "number";
+  delayInput.min = "0";
+  delayInput.max = "24";
+  delayInput.step = "1";
+  delayInput.value = Number.isInteger(schedule.randomizedDelayHours) ? String(schedule.randomizedDelayHours) : "2";
+  delayLabel.append(delayText, delayInput);
+
+  form.append(frequencyLabel, timeLabel, delayLabel);
+  const save = document.createElement("button");
+  save.id = "saveRuleScheduleBtn";
+  save.type = "button";
+  save.textContent = t("saveRuleSchedule");
+  save.disabled = busy;
+  save.addEventListener("click", saveRuleUpdateSchedule);
+  form.appendChild(save);
+
+  panel.append(head, form);
+  return panel;
+}
+
 function formatNodeServers(items) {
   if (!Array.isArray(items) || !items.length) return [];
   return items.map((item) => {
@@ -944,6 +1026,7 @@ function renderMaintenance() {
   $("maintenanceSummary").textContent = t("maintenanceNote");
   const rows = $("maintenanceRows");
   rows.innerHTML = "";
+  rows.appendChild(renderRuleUpdateSchedule(rule.schedule || {}));
   rows.appendChild(renderMaintenanceCard(t("ruleUpdateTitle"), [
     [t("timerStatus"), rule.timerActive, statusTone(rule.timerActive)],
     [t("nextUpdate"), rule.next],
@@ -1263,6 +1346,37 @@ async function updateRuleSets() {
     setStatus(t("rulesUpdated"), "ok");
   } catch (error) {
     finishActionButton("updateRulesBtn", "actionFailed", "failed", "updateRules");
+    setStatus(error.message, "bad");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function saveRuleUpdateSchedule() {
+  const [hour = "", minute = ""] = $("ruleScheduleTimeInput").value.split(":");
+  const payload = {
+    frequency: $("ruleScheduleFrequencyInput").value,
+    hour,
+    minute,
+    randomizedDelayHours: $("ruleScheduleDelayInput").value,
+  };
+  setBusy(true);
+  pulseActionButton("saveRuleScheduleBtn", "savingRuleSchedule");
+  setStatus(t("savingRuleSchedule"));
+  try {
+    const result = await api("/api/rules/schedule", { method: "POST", body: JSON.stringify(payload) });
+    maintenance = result.maintenance || maintenance;
+    if (result.state) state = result.state;
+    render();
+    if (!result.scheduleUpdate?.ok) {
+      finishActionButton("saveRuleScheduleBtn", "actionFailed", "failed", "saveRuleSchedule");
+      setStatus(result.scheduleUpdate?.restart?.stderr || result.scheduleUpdate?.daemonReload?.stderr || t("actionFailed"), "bad");
+      return;
+    }
+    finishActionButton("saveRuleScheduleBtn", "actionDone", "done", "saveRuleSchedule");
+    setStatus(t("ruleScheduleSaved"), "ok");
+  } catch (error) {
+    finishActionButton("saveRuleScheduleBtn", "actionFailed", "failed", "saveRuleSchedule");
     setStatus(error.message, "bad");
   } finally {
     setBusy(false);

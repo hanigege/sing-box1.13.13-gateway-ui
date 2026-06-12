@@ -33,6 +33,12 @@ RULE_UPDATE_LAST_PATH = MANAGER_DIR / "rule-update-last.json"
 RULE_UPDATE_SCRIPT = Path(os.environ.get("RULE_UI_RULE_UPDATE_SCRIPT", "/usr/local/sbin/update-sing-box-rules-jsdelivr"))
 RULE_UPDATE_TIMER = os.environ.get("RULE_UI_RULE_UPDATE_TIMER", "update-sing-box-rules-jsdelivr.timer")
 RULE_UPDATE_SERVICE = os.environ.get("RULE_UI_RULE_UPDATE_SERVICE", "update-sing-box-rules-jsdelivr.service")
+RULE_UPDATE_TIMER_DROPIN = Path(
+    os.environ.get(
+        "RULE_UI_RULE_UPDATE_TIMER_DROPIN",
+        f"/etc/systemd/system/{RULE_UPDATE_TIMER}.d/ui-schedule.conf",
+    )
+)
 TPROXY_SERVICE = os.environ.get("RULE_UI_TPROXY_SERVICE", "sing-box-tproxy.service")
 RULE_UI_SERVICE = os.environ.get("RULE_UI_SERVICE", "singbox-rule-ui.service")
 TPROXY_SCRIPT = Path(os.environ.get("RULE_UI_TPROXY_SCRIPT", "/usr/local/sbin/sing-box-tproxy-setup"))
@@ -1262,6 +1268,98 @@ def systemctl_show(unit, properties):
     return values
 
 
+def parse_systemd_minutes(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("h"):
+        return int(text[:-1]) * 60
+    if text.endswith("min"):
+        return int(text[:-3])
+    if text.endswith("ms") or text.endswith("us"):
+        return None
+    if text.endswith("s"):
+        seconds = int(text[:-1])
+        return seconds // 60 if seconds % 60 == 0 else None
+    try:
+        return int(text) // 60_000_000
+    except ValueError:
+        return None
+
+
+def parse_systemd_hours(value):
+    minutes = parse_systemd_minutes(value)
+    if minutes is None:
+        return None
+    return max(0, (minutes + 59) // 60)
+
+
+def parse_rule_update_schedule(timer):
+    calendar = timer.get("TimersCalendar", "")
+    match = re.search(r"OnCalendar=(?:(Sun)\s+)?\*-\*-\*\s+(\d{1,2}):(\d{2}):", calendar)
+    frequency = "weekly" if match and match.group(1) == "Sun" else "daily"
+    hour = int(match.group(2)) if match else 4
+    minute = int(match.group(3)) if match else 20
+    randomized_delay_hours = parse_systemd_hours(timer.get("RandomizedDelayUSec")) or 0
+    next_base = ""
+    next_match = re.search(r"next_elapse=([^;}]+)", calendar)
+    if next_match:
+        next_base = next_match.group(1).strip()
+    return {
+        "frequency": frequency,
+        "hour": hour,
+        "minute": minute,
+        "randomizedDelayHours": randomized_delay_hours,
+        "persistent": str(timer.get("Persistent", "")).lower() in {"yes", "true", "1"},
+        "nextBase": next_base,
+        "dropin": str(RULE_UPDATE_TIMER_DROPIN),
+        "customized": RULE_UPDATE_TIMER_DROPIN.exists(),
+    }
+
+
+def normalize_rule_update_schedule(payload):
+    try:
+        frequency = str(payload.get("frequency", "weekly")).strip()
+        hour = int(payload.get("hour"))
+        minute = int(payload.get("minute"))
+        randomized_delay_hours = int(payload.get("randomizedDelayHours", payload.get("randomizedDelayMinutes", 0)))
+    except (TypeError, ValueError):
+        raise ValueError("自动更新时间必须是有效数字")
+    if frequency not in {"daily", "weekly"}:
+        raise ValueError("自动更新周期只能选择每天或每周")
+    if not 0 <= hour <= 23:
+        raise ValueError("自动更新时间小时必须在 0 到 23 之间")
+    if not 0 <= minute <= 59:
+        raise ValueError("自动更新时间分钟必须在 0 到 59 之间")
+    if not 0 <= randomized_delay_hours <= 24:
+        raise ValueError("随机延迟小时必须在 0 到 24 之间")
+    return {"frequency": frequency, "hour": hour, "minute": minute, "randomizedDelayHours": randomized_delay_hours}
+
+
+def write_rule_update_schedule(payload):
+    schedule = normalize_rule_update_schedule(payload)
+    calendar_prefix = "Sun " if schedule["frequency"] == "weekly" else ""
+    content = "\n".join(
+        [
+            "[Timer]",
+            "# UI 只调整规则自动更新的触发周期和时间；不要在这里改 ExecStart，避免绕过仓库内受控的更新脚本。",
+            "OnCalendar=",
+            f"OnCalendar={calendar_prefix}*-*-* {schedule['hour']:02d}:{schedule['minute']:02d}:00",
+            f"RandomizedDelaySec={schedule['randomizedDelayHours']}h",
+            "Persistent=true",
+            "",
+        ]
+    )
+    RULE_UPDATE_TIMER_DROPIN.parent.mkdir(parents=True, exist_ok=True)
+    RULE_UPDATE_TIMER_DROPIN.write_text(content, encoding="utf-8")
+    # 修改 systemd timer 后必须重载并重启 timer，否则 UI 显示会和实际下一次触发时间不一致。
+    daemon_reload = run_command(["systemctl", "daemon-reload"], timeout=20)
+    if daemon_reload["code"] != 0:
+        return {"ok": False, "schedule": schedule, "daemonReload": daemon_reload, "restart": None}
+    restart = run_command(["systemctl", "restart", RULE_UPDATE_TIMER], timeout=20)
+    return {"ok": restart["code"] == 0, "schedule": schedule, "daemonReload": daemon_reload, "restart": restart}
+
+
 def default_lan_ip():
     result = run_command(["ip", "-o", "-4", "route", "get", "1.1.1.1"], timeout=8)
     parts = result["stdout"].split()
@@ -1947,7 +2045,19 @@ def sync_tproxy(nodes=None, groups=None, normalized_lists=None):
 
 
 def maintenance_status():
-    timer = systemctl_show(RULE_UPDATE_TIMER, ["ActiveState", "SubState", "LastTriggerUSec", "NextElapseUSecRealtime", "Result"])
+    timer = systemctl_show(
+        RULE_UPDATE_TIMER,
+        [
+            "ActiveState",
+            "SubState",
+            "LastTriggerUSec",
+            "NextElapseUSecRealtime",
+            "TimersCalendar",
+            "RandomizedDelayUSec",
+            "Persistent",
+            "Result",
+        ],
+    )
     service = systemctl_show(RULE_UPDATE_SERVICE, ["ActiveState", "SubState", "Result"])
     rule_logs = recent_unit_logs(RULE_UPDATE_SERVICE, 100)
     last_manual = load_json(RULE_UPDATE_LAST_PATH, {})
@@ -1959,18 +2069,22 @@ def maintenance_status():
     iface = first_default_interface()
     current_v6 = current_ipv6_prefixes(iface)
     script_v6 = script_ipv6_prefixes(TPROXY_SCRIPT)
+    schedule = parse_rule_update_schedule(timer)
+    # systemd 在刚触发或不同版本字段为空时，NextElapseUSecRealtime 可能短暂不可用；用 TimersCalendar 的 next_elapse 兜底，避免 UI 把可恢复状态显示成未知。
+    next_update = timer.get("NextElapseUSecRealtime", "") or schedule.get("nextBase", "")
     return {
         "ruleUpdate": {
             "script": str(RULE_UPDATE_SCRIPT),
             "scriptExists": RULE_UPDATE_SCRIPT.exists(),
             "timer": RULE_UPDATE_TIMER,
             "timerActive": unit_status(RULE_UPDATE_TIMER),
-            "next": timer.get("NextElapseUSecRealtime", ""),
+            "next": next_update,
             "last": last_text,
             "result": result_text,
             "serviceState": service.get("ActiveState", ""),
             "log": log,
             "summary": summary,
+            "schedule": schedule,
         },
         "tproxy": {
             "service": TPROXY_SERVICE,
@@ -2771,6 +2885,11 @@ class Handler(BaseHTTPRequestHandler):
                 result = update_rule_sets()
                 status = 200 if result["code"] == 0 else 500
                 self.send_json({"update": result, "maintenance": maintenance_status(), "state": load_state()}, status)
+                return
+            if parsed.path == "/api/rules/schedule":
+                result = write_rule_update_schedule(payload)
+                status = 200 if result["ok"] else 500
+                self.send_json({"scheduleUpdate": result, "maintenance": maintenance_status(), "state": load_state()}, status)
                 return
             if parsed.path == "/api/tproxy/sync":
                 result = sync_tproxy()
