@@ -1814,7 +1814,12 @@ def tproxy_proxy_ip_networks(nodes=None, groups=None, normalized_lists=None):
         if any(network.version == item.version and (network.subnet_of(item) or network.overlaps(item)) for item in protected):
             continue
         networks.append(network)
-    collapsed = sorted(ipaddress.collapse_addresses(networks), key=lambda net: (net.version, int(net.network_address), net.prefixlen))
+    # 灰名单允许 IPv4 和 IPv6 同时存在；ipaddress 不能直接折叠混合版本网段，必须先按版本分组。
+    collapsed = []
+    for version in (4, 6):
+        version_networks = [network for network in networks if network.version == version]
+        collapsed.extend(ipaddress.collapse_addresses(version_networks))
+    collapsed = sorted(collapsed, key=lambda net: (net.version, int(net.network_address), net.prefixlen))
     return [str(net) for net in collapsed]
 
 
@@ -1825,7 +1830,12 @@ def collapse_network_strings(items):
             networks.append(ipaddress.ip_network(item, strict=False))
         except ValueError:
             continue
-    collapsed = sorted(ipaddress.collapse_addresses(networks), key=lambda net: (net.version, int(net.network_address), net.prefixlen))
+    # nft set 分别使用 IPv4/IPv6，但调用方有时会传入混合列表；这里统一按版本折叠，避免跨版本比较异常。
+    collapsed = []
+    for version in (4, 6):
+        version_networks = [network for network in networks if network.version == version]
+        collapsed.extend(ipaddress.collapse_addresses(version_networks))
+    collapsed = sorted(collapsed, key=lambda net: (net.version, int(net.network_address), net.prefixlen))
     return [str(net) for net in collapsed]
 
 
