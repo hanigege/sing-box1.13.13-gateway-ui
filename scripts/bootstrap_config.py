@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -64,7 +65,19 @@ def empty_rule_set():
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # 初装会生成正式配置和 UI 状态文件，使用原子替换保证中断后不会留下半截 JSON。
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def node_from_prompt(index, default_type):

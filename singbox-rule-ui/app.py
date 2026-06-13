@@ -170,12 +170,26 @@ def load_json(path, fallback):
 
 
 def write_json(path, data):
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # UI 负责生产配置落盘，必须先写同目录临时文件再原子替换，避免断电/进程中断留下半截 JSON。
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def restore_file(path, backup):
     if backup and Path(backup).exists():
-        shutil.copy2(backup, path)
+        data = json.loads(Path(backup).read_text(encoding="utf-8"))
+        write_json(path, data)
 
 
 def read_text_if_exists(path):
@@ -1176,10 +1190,7 @@ def write_entries(name, entries):
     normalized = entries if all(isinstance(item, dict) and "type" in item and "value" in item for item in entries) else normalize_entries(entries)
     path = rule_path(name)
     backup = backup_file(path)
-    path.write_text(
-        json.dumps(entries_to_rule_set(normalized), indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    write_json(path, entries_to_rule_set(normalized))
     return {"name": name, "count": len(normalized), "backup": backup}
 
 
@@ -1236,8 +1247,34 @@ def check_config(config_path=CONFIG_PATH):
     return run_command(["/usr/local/bin/sing-box", "check", "-c", str(config_path)], timeout=20)
 
 
+def reset_sing_box_failed():
+    # UI 操作必须能从 start-limit-hit/failed 状态自救，不能要求用户进终端执行 reset-failed。
+    return run_command(["systemctl", "reset-failed", "sing-box.service"], timeout=8)
+
+
+def wait_for_unit_active(unit, timeout=15):
+    deadline = time.time() + timeout
+    last_status = "unknown"
+    while time.time() < deadline:
+        last_status = unit_status(unit)
+        if last_status == "active":
+            return {"active": True, "service": last_status}
+        time.sleep(0.5)
+    return {"active": False, "service": last_status}
+
+
 def restart_sing_box():
-    return run_command(["systemctl", "restart", "sing-box.service"], timeout=20)
+    reset = reset_sing_box_failed()
+    restart = run_command(["systemctl", "restart", "sing-box.service"], timeout=20)
+    wait = wait_for_unit_active("sing-box.service")
+    code = 0 if restart["code"] == 0 and wait["active"] else 1
+    return {
+        "code": code,
+        "stdout": restart["stdout"],
+        "stderr": restart["stderr"],
+        "resetFailed": reset,
+        "service": wait["service"],
+    }
 
 
 def restart_tproxy():
@@ -2442,10 +2479,7 @@ def rewrite_custom_rule_paths(config, staged_dir):
 def write_rule_files(target_dir, normalized_lists):
     target_dir.mkdir(parents=True, exist_ok=True)
     for name, entries in normalized_lists.items():
-        (target_dir / f"{name}.json").write_text(
-            json.dumps(entries_to_rule_set(entries), indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        write_json(target_dir / f"{name}.json", entries_to_rule_set(entries))
 
 
 def staged_check(normalized_lists, nodes=None, groups=None):
@@ -2464,7 +2498,7 @@ def staged_check(normalized_lists, nodes=None, groups=None):
         except Exception as exc:
             return {"code": 1, "stdout": "", "stderr": str(exc)}
         staged_config = staged_dir / "config.json"
-        staged_config.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        write_json(staged_config, config)
         return check_config(staged_config)
 
 
@@ -2886,7 +2920,19 @@ class Handler(BaseHTTPRequestHandler):
                         422,
                     )
                     return
-                self.send_json({"check": check, "restart": restart_sing_box(), "state": load_state()})
+                restart = restart_sing_box()
+                if restart["code"] != 0:
+                    self.send_json(
+                        {
+                            "error": "Restart failed. Existing config was kept and service recovery was attempted.",
+                            "check": check,
+                            "restart": restart,
+                            "state": load_state(),
+                        },
+                        500,
+                    )
+                    return
+                self.send_json({"check": check, "restart": restart, "state": load_state()})
                 return
             if parsed.path == "/api/rules/update":
                 result = update_rule_sets()

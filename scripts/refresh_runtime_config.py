@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import json
 import ipaddress
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -137,6 +139,22 @@ def apply_runtime_listeners(config, lan_ip, ipv6_listen):
     return changed
 
 
+def atomic_write_text(path, text):
+    # 这是 sing-box.service 的 ExecStartPre，正式配置必须原子替换，避免启动前写坏 config.json。
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def main():
     if not CONFIG_PATH.exists():
         return 0
@@ -147,7 +165,7 @@ def main():
     listener_changed = apply_runtime_listeners(config, lan_ip, ipv6_listen)
     rendered = json.dumps(config, indent=2, ensure_ascii=False) + "\n"
     if rendered != previous:
-        CONFIG_PATH.write_text(rendered, encoding="utf-8")
+        atomic_write_text(CONFIG_PATH, rendered)
         print(f"Rendered sing-box config and updated listeners for {lan_ip}.")
     elif listener_changed:
         print(f"Updated sing-box listeners for {lan_ip}.")

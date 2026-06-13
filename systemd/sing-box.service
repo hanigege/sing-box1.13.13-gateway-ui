@@ -3,13 +3,16 @@ Description=sing-box service
 Documentation=https://sing-box.sagernet.org
 After=network-online.target sing-box-tproxy.service
 Wants=network-online.target
+# 旁路网关的目标是 sing-box 不死；禁用启动限速，避免连续失败后 systemd 停止自动拉起。
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStartPre=/usr/local/sbin/refresh-sing-box-runtime-config
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 ExecReload=/bin/kill -HUP $MAINPID
-Restart=on-failure
+# sing-box 正常退出也要重新拉起，避免 UI/规则操作后服务停住需要用户进终端处理。
+Restart=always
 RestartSec=5
 LimitNOFILE=infinity
 
