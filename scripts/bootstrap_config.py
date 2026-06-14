@@ -63,6 +63,14 @@ def empty_rule_set():
     return {"version": 3, "rules": []}
 
 
+def normalize_cidr(value, label):
+    try:
+        return str(ipaddress.ip_network(value, strict=True))
+    except ValueError as exc:
+        # FakeIP 网段会同时写入 DNS、路由和 TProxy；必须要求网络地址，不能把主机地址静默修正成网段。
+        raise ValueError(f"{label} must be a network CIDR, for example 28.0.0.0/8") from exc
+
+
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     # 初装会生成正式配置和 UI 状态文件，使用原子替换保证中断后不会留下半截 JSON。
@@ -299,8 +307,8 @@ def main():
         ipv6_dns = ask("IPv6 DNS listen address, empty to disable", "")
         if ipv6_dns:
             ipaddress.ip_address(ipv6_dns)
-    ipaddress.ip_network(fake4, strict=False)
-    ipaddress.ip_network(fake6, strict=False)
+    fake4 = normalize_cidr(fake4, "FakeIP IPv4 range")
+    fake6 = normalize_cidr(fake6, "FakeIP IPv6 range")
     nodes = initial_nodes_from_file()
     if nodes is None:
         if simple_mode or ask_yes_no("Use two placeholder template nodes and edit them later in UI?", True):

@@ -169,21 +169,21 @@ def rule_path(name):
 
 
 def backup_file(path):
-    if not path.exists():
-        return None
     backup_dir = RULE_DIR / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    target = backup_dir / f"{path.name}.bak-{now_stamp()}"
-    shutil.copy2(path, target)
-    return str(target)
+    return backup_path(path, backup_dir)
 
 
 def backup_manager_file(path):
+    return backup_path(path, BACKUP_DIR)
+
+
+def backup_path(path, backup_dir):
     if not path.exists():
-        return None
-    target = BACKUP_DIR / f"{path.name}.bak-{now_stamp()}"
+        return {"existed": False, "backup": None}
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / f"{path.name}.bak-{now_stamp()}"
     shutil.copy2(path, target)
-    return str(target)
+    return {"existed": True, "backup": str(target)}
 
 
 def load_json(path, fallback):
@@ -210,6 +210,12 @@ def write_json(path, data):
 
 
 def restore_file(path, backup):
+    if isinstance(backup, dict):
+        # 回滚必须恢复“原来是否存在”这个状态；否则失败保存会留下新建的规则/配置文件。
+        if not backup.get("existed", bool(backup.get("backup"))):
+            path.unlink(missing_ok=True)
+            return
+        backup = backup.get("backup")
     if backup and Path(backup).exists():
         data = json.loads(Path(backup).read_text(encoding="utf-8"))
         write_json(path, data)
