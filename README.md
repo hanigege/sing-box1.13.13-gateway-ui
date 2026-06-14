@@ -68,13 +68,13 @@ net.ipv6.conf.eth0.accept_ra_defrtr=1
 推荐使用反代入口，适合新机器还没有代理环境、GitHub DNS 可能被污染的情况：
 
 ```bash
-curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui/main/scripts/quick-install.sh | sudo bash
+curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui--1.14x-SagerNet/main/scripts/quick-install.sh | sudo bash
 ```
 
 如果当前机器直连 GitHub 稳定，也可以使用官方入口：
 
 ```bash
-curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/scripts/quick-install.sh | sudo bash
+curl -fsSL https://github.com/hanigege/sing-box-gateway-ui--1.14x-SagerNet/raw/refs/heads/main/scripts/quick-install.sh | sudo bash
 ```
 
 安装器只使用仓库自带并验证过的 `sing-box 1.13.13`，不提供自动下载上游最新版，避免 sing-box 配置语法变化导致安装后无法启动。项目源码下载会优先尝试反代地址，失败后再尝试 GitHub 官方地址。
@@ -243,19 +243,19 @@ SING_BOX_ARCH=arm64 sudo bash scripts/install.sh
 新版本安装器会在 `/etc/sing-box/manager/install-state` 记录安装前状态，用于卸载时判断哪些文件和依赖可以安全删除。老版本安装没有这份记录时，卸载仍会清理本项目路径和服务，但不会猜测删除安装前状态不明的系统组件。
 
 ```bash
-curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui/main/scripts/quick-install.sh | sudo bash -s uninstall
+curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui--1.14x-SagerNet/main/scripts/quick-install.sh | sudo bash -s uninstall
 ```
 
 如果没有安装状态记录，但你仍然确认要删除 `/usr/local/bin/sing-box`，可以使用 purge：
 
 ```bash
-curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui/main/scripts/quick-install.sh | sudo bash -s purge
+curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box-gateway-ui--1.14x-SagerNet/main/scripts/quick-install.sh | sudo bash -s purge
 ```
 
 直连 GitHub 稳定时也可以使用官方 purge 入口：
 
 ```bash
-curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/scripts/quick-install.sh | sudo bash -s purge
+curl -fsSL https://github.com/hanigege/sing-box-gateway-ui--1.14x-SagerNet/raw/refs/heads/main/scripts/quick-install.sh | sudo bash -s purge
 ```
 
 ## Git 安装
@@ -263,8 +263,8 @@ curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/s
 适合想修改脚本或参与开发的用户：
 
 ```bash
-git clone https://github.com/hanigege/sing-box-gateway-ui.git
-cd sing-box-gateway-ui
+git clone https://github.com/hanigege/sing-box-gateway-ui--1.14x-SagerNet.git
+cd sing-box-gateway-ui--1.14x-SagerNet
 sudo bash scripts/install.sh
 ```
 
