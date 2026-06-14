@@ -30,6 +30,7 @@ NODES_PATH = MANAGER_DIR / "nodes.json"
 GROUPS_PATH = MANAGER_DIR / "groups.json"
 BACKUP_DIR = MANAGER_DIR / "backups"
 RULE_UPDATE_LAST_PATH = MANAGER_DIR / "rule-update-last.json"
+TELEGRAM_CIDR_PATH = MANAGER_DIR / "telegram-cidr.json"
 RULE_UPDATE_SCRIPT = Path(os.environ.get("RULE_UI_RULE_UPDATE_SCRIPT", "/usr/local/sbin/update-sing-box-rules-jsdelivr"))
 RULE_UPDATE_TIMER = os.environ.get("RULE_UI_RULE_UPDATE_TIMER", "update-sing-box-rules-jsdelivr.timer")
 RULE_UPDATE_SERVICE = os.environ.get("RULE_UI_RULE_UPDATE_SERVICE", "update-sing-box-rules-jsdelivr.service")
@@ -91,20 +92,32 @@ LIST_ENTRY_TYPES = {
     "greylist": ENTRY_TYPES,
     "ddns": ("domain_suffix", "domain"),
 }
-TELEGRAM_PROXY_IPV4 = (
+DEFAULT_TELEGRAM_PROXY_IPV4 = (
     "91.108.4.0/22",
     "91.108.8.0/22",
     "91.108.12.0/22",
     "91.108.16.0/22",
     "91.108.20.0/22",
     "91.108.56.0/22",
-    "95.161.64.0/20",
+    "91.105.192.0/23",
+    "185.76.151.0/24",
     "149.154.160.0/20",
 )
-TELEGRAM_PROXY_IPV6 = (
+DEFAULT_TELEGRAM_PROXY_IPV6 = (
     "2001:67c:4e8::/48",
-    "2001:b28:f23c::/47",
+    "2001:b28:f23c::/48",
+    "2001:b28:f23d::/48",
     "2001:b28:f23f::/48",
+    "2a0a:f280::/32",
+)
+DEFAULT_TELEGRAM_CIDR_SOURCES = (
+    "https://core.telegram.org/resources/cidr.txt",
+    "https://raw.githubusercontent.com/fernvenue/telegram-cidr-list/master/CIDR.txt",
+)
+TELEGRAM_CIDR_SOURCES = tuple(
+    item
+    for item in os.environ.get("RULE_UI_TELEGRAM_CIDR_SOURCES", " ".join(DEFAULT_TELEGRAM_CIDR_SOURCES)).split()
+    if item
 )
 DOMAIN_RE = re.compile(r"^[A-Za-z0-9_*.-]+$")
 SPECIAL_OUTBOUNDS = {"Proxy", "Auto", "direct", "block"}
@@ -380,6 +393,109 @@ def normalize_cidr(value, default=None, strict=False):
         if strict:
             hint = "; use a network address, for example 28.0.0.0/8"
         raise ValueError(f"Invalid CIDR: {value}{hint}") from exc
+
+
+def normalize_telegram_cidrs(items):
+    if not isinstance(items, list):
+        raise ValueError("Telegram CIDR list must be an array")
+    networks = []
+    for item in items:
+        cidr = str(item or "").strip().strip("'\"")
+        if not cidr:
+            continue
+        networks.append(ipaddress.ip_network(cidr, strict=False))
+    collapsed = []
+    for version in (4, 6):
+        version_networks = [network for network in networks if network.version == version]
+        collapsed.extend(ipaddress.collapse_addresses(version_networks))
+    collapsed = sorted(collapsed, key=lambda net: (net.version, int(net.network_address), net.prefixlen))
+    if not [item for item in collapsed if item.version == 4]:
+        raise ValueError("Telegram CIDR list must include IPv4 ranges")
+    if not [item for item in collapsed if item.version == 6]:
+        raise ValueError("Telegram CIDR list must include IPv6 ranges")
+    return [str(item) for item in collapsed]
+
+
+def default_telegram_cidrs():
+    return normalize_telegram_cidrs([*DEFAULT_TELEGRAM_PROXY_IPV4, *DEFAULT_TELEGRAM_PROXY_IPV6])
+
+
+def parse_telegram_cidr_text(text):
+    items = []
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.split("#", 1)[0].strip().strip("'\"")
+        if not line:
+            continue
+        if line.startswith("- "):
+            line = line[2:].strip().strip("'\"")
+        if "," in line:
+            parts = [part.strip().strip("'\"") for part in line.split(",")]
+            line = next((part for part in parts if "/" in part), line)
+        items.append(str(ipaddress.ip_network(line, strict=False)))
+    return normalize_telegram_cidrs(items)
+
+
+def split_telegram_cidrs(items):
+    normalized = normalize_telegram_cidrs(items)
+    return {
+        "ipv4": [item for item in normalized if ":" not in item],
+        "ipv6": [item for item in normalized if ":" in item],
+    }
+
+
+def load_telegram_cidr_data():
+    data = load_json(TELEGRAM_CIDR_PATH, {})
+    fallback = False
+    try:
+        cidrs = normalize_telegram_cidrs(data.get("cidrs", []))
+    except Exception:
+        cidrs = default_telegram_cidrs()
+        data = {}
+        fallback = True
+    split = split_telegram_cidrs(cidrs)
+    return {
+        "path": str(TELEGRAM_CIDR_PATH),
+        "source": data.get("source") or "built-in default",
+        "updatedAt": data.get("updatedAt") or "",
+        "fallback": fallback,
+        "cidrs": [*split["ipv4"], *split["ipv6"]],
+        "ipv4": split["ipv4"],
+        "ipv6": split["ipv6"],
+        "count4": len(split["ipv4"]),
+        "count6": len(split["ipv6"]),
+        "count": len(split["ipv4"]) + len(split["ipv6"]),
+    }
+
+
+def save_telegram_cidrs(cidrs, source="manual"):
+    normalized = normalize_telegram_cidrs(cidrs)
+    MANAGER_DIR.mkdir(parents=True, exist_ok=True)
+    write_json(
+        TELEGRAM_CIDR_PATH,
+        {
+            "source": source,
+            "updatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "cidrs": normalized,
+        },
+    )
+    return load_telegram_cidr_data()
+
+
+def update_telegram_cidrs():
+    errors = []
+    if not TELEGRAM_CIDR_SOURCES:
+        return {"ok": False, "source": "", "telegramCidr": load_telegram_cidr_data(), "tproxySync": None, "errors": ["No Telegram CIDR sources configured"]}
+    for source in TELEGRAM_CIDR_SOURCES:
+        try:
+            request = Request(source, headers={"User-Agent": "sing-box-gateway-ui"})
+            with urlopen(request, timeout=20) as response:
+                text = response.read().decode("utf-8", errors="replace")
+            data = save_telegram_cidrs(parse_telegram_cidr_text(text), source=source)
+            sync = sync_tproxy()
+            return {"ok": sync["code"] == 0, "source": source, "telegramCidr": data, "tproxySync": sync, "errors": errors}
+        except Exception as exc:
+            errors.append(f"{source}: {exc}")
+    return {"ok": False, "source": "", "telegramCidr": load_telegram_cidr_data(), "tproxySync": None, "errors": errors}
 
 
 def normalize_node(raw):
@@ -1936,9 +2052,10 @@ def tproxy_bypass_sets(nodes=None, groups=None, normalized_lists=None):
     node_networks = outbound_server_ip_networks(nodes)
     proxy_networks = tproxy_proxy_ip_networks(nodes=nodes, groups=groups, normalized_lists=normalized_lists)
     telegram_capture = normalize_bool(groups.get("telegram", {}).get("capture_ips", True))
-    # Telegram 客户端常直接连接官方 IP；用显式开关纳入 TProxy，而不是恢复全部真实公网捕获。
-    telegram4 = list(TELEGRAM_PROXY_IPV4) if telegram_capture else []
-    telegram6 = list(TELEGRAM_PROXY_IPV6) if telegram_capture else []
+    telegram_cidr = load_telegram_cidr_data()
+    # Telegram 客户端常直接连接官方 IP；列表从 manager 文件读取，缺失时才使用内置兜底，避免官方变动后长期写死。
+    telegram4 = list(telegram_cidr["ipv4"]) if telegram_capture else []
+    telegram6 = list(telegram_cidr["ipv6"]) if telegram_capture else []
     return {
         "interface": iface,
         "bypass4": collapse_network_strings(bypass4),
@@ -1950,6 +2067,7 @@ def tproxy_bypass_sets(nodes=None, groups=None, normalized_lists=None):
         "telegramCaptureIps": telegram_capture,
         "telegramProxy4": collapse_network_strings(telegram4),
         "telegramProxy6": collapse_network_strings(telegram6),
+        "telegramCidr": telegram_cidr,
         "nodeServerIpNetworks": node_networks,
         "nodeServers": resolved_outbound_servers(nodes, groups),
     }
@@ -2218,6 +2336,7 @@ def maintenance_status():
     current_v6 = current_ipv6_prefixes(iface)
     script_v6 = script_ipv6_prefixes(TPROXY_SCRIPT)
     schedule = parse_rule_update_schedule(timer)
+    telegram_cidr = load_telegram_cidr_data()
     # systemd 在刚触发或不同版本字段为空时，NextElapseUSecRealtime 可能短暂不可用；用 TimersCalendar 的 next_elapse 兜底，避免 UI 把可恢复状态显示成未知。
     next_update = timer.get("NextElapseUSecRealtime", "") or schedule.get("nextBase", "")
     return {
@@ -2234,6 +2353,7 @@ def maintenance_status():
             "summary": summary,
             "schedule": schedule,
         },
+        "telegramCidr": telegram_cidr,
         "tproxy": {
             "service": TPROXY_SERVICE,
             "serviceActive": unit_status(TPROXY_SERVICE),
@@ -2907,6 +3027,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json({"maintenance": maintenance_status(), "state": load_state()})
             return
+        if parsed.path == "/api/telegram-cidr":
+            if not self.authorized():
+                self.send_error_json("Unauthorized", 401)
+                return
+            self.send_json({"telegramCidr": load_telegram_cidr_data()})
+            return
         if parsed.path == "/api/backup/export":
             if not self.authorized():
                 self.send_error_json("Unauthorized", 401)
@@ -3059,6 +3185,20 @@ class Handler(BaseHTTPRequestHandler):
                 result = write_rule_update_schedule(payload)
                 status = 200 if result["ok"] else 500
                 self.send_json({"scheduleUpdate": result, "maintenance": maintenance_status(), "state": load_state()}, status)
+                return
+            if parsed.path == "/api/telegram-cidr/update":
+                result = update_telegram_cidrs()
+                status = 200 if result["ok"] else 500
+                self.send_json({"telegramCidrUpdate": result, "maintenance": maintenance_status(), "state": load_state()}, status)
+                return
+            if parsed.path == "/api/telegram-cidr/save":
+                cidrs = payload.get("cidrs")
+                if isinstance(cidrs, str):
+                    cidrs = parse_telegram_cidr_text(cidrs)
+                result = save_telegram_cidrs(cidrs or [], source="manual")
+                sync = sync_tproxy()
+                status = 200 if sync["code"] == 0 else 500
+                self.send_json({"telegramCidr": result, "tproxySync": sync, "maintenance": maintenance_status(), "state": load_state()}, status)
                 return
             if parsed.path == "/api/tproxy/sync":
                 result = sync_tproxy()

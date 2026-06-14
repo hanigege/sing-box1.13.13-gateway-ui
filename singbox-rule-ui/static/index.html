@@ -113,34 +113,34 @@
             <div id="dnsDelayRows" class="dns-delay-rows wide-field"></div>
           </section>
 
-          <section class="compact-settings" aria-label="FakeIP settings">
-            <div>
+          <section class="compact-settings fakeip-settings" aria-label="FakeIP settings">
+            <div class="settings-intro">
               <h3 data-i18n="fakeipTitle">FakeIP</h3>
               <p data-i18n="fakeipNote">Match this range with the upstream router.</p>
             </div>
-            <label>
+            <label class="range-field">
               <span data-i18n="fakeipV4">IPv4 range</span>
               <input id="fakeipV4" type="text" autocomplete="off" placeholder="28.0.0.0/8" />
             </label>
-            <label>
+            <label class="range-field">
               <span data-i18n="fakeipV6">IPv6 range</span>
               <input id="fakeipV6" type="text" autocomplete="off" placeholder="2001:2::/64" />
             </label>
-            <label class="checkline fakeip-toggle wide-field">
-              <input id="fakeipIpv6Enabled" type="checkbox" checked />
-              <span data-i18n="fakeipIpv6Enabled">Enable IPv6 FakeIP / AAAA</span>
-            </label>
-            <div class="policy-note wide-field">
-              <strong data-i18n="fakeipQuicPolicy">FakeIP QUIC protection is always on</strong>
-              <small data-i18n="fakeipQuicPolicyHelp">UDP/443 to FakeIP ranges is blocked so browsers fall back to TCP and proxy latency stays stable.</small>
-            </div>
-            <label class="checkline fakeip-toggle wide-field">
-              <input id="telegramCaptureIps" type="checkbox" checked />
-              <span data-i18n="telegramCaptureIps">Proxy Telegram official IP ranges</span>
-            </label>
-            <div class="policy-note wide-field">
-              <strong data-i18n="telegramPolicy">Telegram IP capture</strong>
-              <small data-i18n="telegramPolicyHelp">Telegram clients may connect to official IPs directly. This keeps those explicit service ranges in TProxy without capturing all public IP traffic.</small>
+            <div class="policy-grid wide-field">
+              <label class="policy-option">
+                <span class="policy-option-head">
+                  <input id="fakeipIpv6Enabled" type="checkbox" checked />
+                  <strong data-i18n="fakeipIpv6Enabled">Enable IPv6 FakeIP / AAAA</strong>
+                </span>
+                <small data-i18n="fakeipIpv6Help">Return IPv6 FakeIP answers for matched domains when the upstream router sends the IPv6 FakeIP range back to sing-box.</small>
+              </label>
+              <label class="policy-option">
+                <span class="policy-option-head">
+                  <input id="telegramCaptureIps" type="checkbox" checked />
+                  <strong data-i18n="telegramCaptureIps">Proxy Telegram official IP ranges</strong>
+                </span>
+                <small data-i18n="telegramPolicyHelp">Telegram clients may connect to official IPs directly. This keeps those explicit service ranges in TProxy without capturing all public IP traffic.</small>
+              </label>
             </div>
           </section>
 
@@ -194,6 +194,20 @@
             </div>
           </section>
           <div id="maintenanceRows" class="maintenance-rows"></div>
+          <section class="telegram-cidr-panel" aria-label="Telegram CIDR">
+            <div class="telegram-cidr-head">
+              <div>
+                <h3 data-i18n="telegramCidrTitle">Telegram IP ranges</h3>
+                <p id="telegramCidrSummary" data-i18n="telegramCidrLoading">Loading Telegram CIDR status.</p>
+              </div>
+              <div class="telegram-cidr-actions">
+                <button id="updateTelegramCidrBtn" class="secondary-btn" type="button" data-i18n="updateTelegramCidr">Update and apply online</button>
+                <button id="saveTelegramCidrBtn" class="secondary-btn" type="button" data-i18n="saveTelegramCidr">Save manual list</button>
+              </div>
+            </div>
+            <textarea id="telegramCidrText" spellcheck="false" autocomplete="off" placeholder="91.108.4.0/22"></textarea>
+            <p class="maintenance-note" data-i18n="telegramCidrHelp">Use online update for normal maintenance. Manual edits are validated before replacing the active TProxy list.</p>
+          </section>
         </section>
 
         <section id="runtimeEditor" class="panel editor hidden">

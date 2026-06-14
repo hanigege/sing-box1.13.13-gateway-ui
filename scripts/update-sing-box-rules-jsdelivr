@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_DIR="/etc/sing-box/rules"
-CONFIG="/etc/sing-box/config.json"
-SING_BOX="/usr/local/bin/sing-box"
-SERVICE="sing-box.service"
+BASE_DIR="${RULE_UPDATE_BASE_DIR:-/etc/sing-box/rules}"
+CONFIG="${RULE_UPDATE_CONFIG:-/etc/sing-box/config.json}"
+MANAGER_DIR="${RULE_UPDATE_MANAGER_DIR:-/etc/sing-box/manager}"
+TELEGRAM_CIDR_FILE="${RULE_UPDATE_TELEGRAM_CIDR_FILE:-$MANAGER_DIR/telegram-cidr.json}"
+SING_BOX="${RULE_UPDATE_SING_BOX:-/usr/local/bin/sing-box}"
+SERVICE="${RULE_UPDATE_SERVICE_NAME:-sing-box.service}"
+TPROXY_SERVICE="${RULE_UPDATE_TPROXY_SERVICE:-sing-box-tproxy.service}"
 RESTART_SERVICE="${RULE_UPDATE_RESTART:-1}"
 FORCE_UPDATE="${RULE_UPDATE_FORCE:-0}"
 LOCK_FILE="/run/update-sing-box-rules-jsdelivr.lock"
@@ -50,6 +53,11 @@ UPDATED_FILES=()
 BACKUP_DIR="$TMP_DIR/backup"
 NEW_DIR="$TMP_DIR/new"
 mkdir -p "$BACKUP_DIR" "$NEW_DIR"
+DEFAULT_TELEGRAM_CIDR_SOURCES=(
+  "https://core.telegram.org/resources/cidr.txt"
+  "https://raw.githubusercontent.com/fernvenue/telegram-cidr-list/master/CIDR.txt"
+)
+IFS=" " read -r -a TELEGRAM_CIDR_SOURCES <<< "${RULE_UPDATE_TELEGRAM_CIDR_SOURCES:-${DEFAULT_TELEGRAM_CIDR_SOURCES[*]}}"
 
 source_url() {
   local mirror="$1" source="$2" subdir="$3" name="$4"
@@ -93,6 +101,73 @@ curl_rule_file() {
     curl_flags+=(--resolve "${host}:443:${ip}")
   fi
   curl "${curl_flags[@]}" "$url" -o "$output" 2>"$log"
+}
+
+update_telegram_cidr_file() {
+  local source output log host ip curl_flags
+  if [ "${#TELEGRAM_CIDR_SOURCES[@]}" -eq 0 ]; then
+    echo "optional telegram cidr list update disabled: no sources configured"
+    return 0
+  fi
+  for source in "${TELEGRAM_CIDR_SOURCES[@]}"; do
+    output="$TMP_DIR/telegram-cidr.txt"
+    log="$TMP_DIR/telegram-cidr.log"
+    host="$(url_host "$source")"
+    ip="$(resolve_host_ipv4 "$host" || true)"
+    curl_flags=(-4 -fsSL --connect-timeout 4 --max-time 20)
+    if [ -n "$ip" ]; then
+      # Telegram CIDR 影响 TProxy 捕获范围；下载同样绕开本机 FakeIP DNS，校验通过才覆盖旧列表。
+      curl_flags+=(--resolve "${host}:443:${ip}")
+    fi
+    if curl "${curl_flags[@]}" "$source" -o "$output" 2>"$log"; then
+      python3 - "$output" "$TELEGRAM_CIDR_FILE" "$source" <<'PY'
+import ipaddress
+import json
+import sys
+import time
+from pathlib import Path
+
+source_path, target_path, source = sys.argv[1:]
+items = []
+for raw in Path(source_path).read_text(encoding="utf-8").splitlines():
+    line = raw.split("#", 1)[0].strip().strip("'\"")
+    if not line:
+        continue
+    if line.startswith("- "):
+        line = line[2:].strip().strip("'\"")
+    if "," in line:
+        parts = [part.strip().strip("'\"") for part in line.split(",")]
+        line = next((part for part in parts if "/" in part), line)
+    items.append(ipaddress.ip_network(line, strict=False))
+collapsed = []
+for version in (4, 6):
+    collapsed.extend(ipaddress.collapse_addresses([item for item in items if item.version == version]))
+collapsed = sorted(collapsed, key=lambda item: (item.version, int(item.network_address), item.prefixlen))
+if not any(item.version == 4 for item in collapsed) or not any(item.version == 6 for item in collapsed):
+    raise SystemExit("telegram cidr list must include IPv4 and IPv6 ranges")
+target = Path(target_path)
+target.parent.mkdir(parents=True, exist_ok=True)
+target.write_text(json.dumps({
+    "source": source,
+    "updatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+    "cidrs": [str(item) for item in collapsed],
+}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+      echo "updated optional telegram cidr list from $source"
+      if systemctl is-active --quiet "$TPROXY_SERVICE"; then
+        systemctl restart "$TPROXY_SERVICE" >/dev/null 2>&1 || echo "WARN: TProxy restart failed after Telegram CIDR update; UI sync can retry" >&2
+      fi
+      return 0
+    fi
+    echo "optional telegram cidr source failed: $source" >&2
+    [ -s "$log" ] && sed 's/^/  /' "$log" >&2 || true
+  done
+  if [ -s "$TELEGRAM_CIDR_FILE" ]; then
+    echo "kept optional telegram cidr list cache"
+    return 0
+  fi
+  echo "optional telegram cidr list unavailable; built-in UI fallback will be used" >&2
+  return 0
 }
 
 required_files_present() {
@@ -277,5 +352,7 @@ for entry in "${UPDATED_FILES[@]}"; do
   RESTORE_FILES+=("$rel")
   echo "installed $rel"
 done
+
+update_telegram_cidr_file
 
 finish_checked_update "sing-box rule sets updated"

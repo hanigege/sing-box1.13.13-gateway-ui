@@ -389,6 +389,41 @@ input[type="checkbox"] {
   margin-bottom: 12px;
 }
 
+.fakeip-settings {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+
+.settings-intro {
+  grid-column: 1 / -1;
+  min-height: 74px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid rgba(126, 143, 154, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.settings-intro h3,
+.compact-settings h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 780;
+}
+
+.settings-intro p,
+.compact-settings p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .auto-settings {
   grid-template-columns: minmax(160px, 1fr) minmax(220px, 2fr) repeat(2, minmax(92px, 130px));
 }
@@ -408,6 +443,21 @@ input[type="checkbox"] {
 .compact-settings label {
   display: grid;
   gap: 5px;
+  align-content: end;
+}
+
+.fakeip-settings .range-field {
+  min-height: 90px;
+  align-content: start;
+  border: 1px solid rgba(126, 143, 154, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.fakeip-settings .range-field input {
+  min-height: 46px;
+  font-size: 16px;
 }
 
 .compact-settings label span {
@@ -425,18 +475,6 @@ input[type="checkbox"] {
 .compact-settings input[type="checkbox"] {
   width: 16px;
   min-height: 16px;
-}
-
-.fakeip-toggle {
-  grid-column: 1 / -1;
-  min-height: 36px;
-  align-items: center;
-}
-
-.compact-settings .fakeip-toggle {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
 }
 
 .match-help {
@@ -559,28 +597,49 @@ input[type="checkbox"] {
   color: var(--muted);
 }
 
-.policy-note {
-  display: grid;
-  gap: 4px;
-  min-height: 58px;
-  border: 1px solid rgba(63, 127, 190, 0.18);
-  border-radius: 12px;
-  background: rgba(63, 127, 190, 0.06);
-  padding: 10px 12px;
-}
-
-.policy-note.wide-field {
+.policy-grid {
   grid-column: 1 / -1;
   width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.policy-note strong {
+.policy-option {
+  position: relative;
+  min-height: 116px;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(126, 143, 154, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+  padding: 13px 14px;
+  box-shadow: 0 8px 18px rgba(31, 48, 58, 0.07), 0 1px 2px rgba(31, 48, 58, 0.05);
+}
+
+.policy-option-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.policy-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.policy-option strong {
   color: var(--text);
   font-size: 13px;
   font-weight: 750;
 }
 
-.policy-note small {
+.policy-option small {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -643,6 +702,58 @@ input[type="checkbox"] {
   grid-template-columns: 1fr;
   align-items: start;
   gap: 12px;
+}
+
+.telegram-cidr-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.telegram-cidr-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.telegram-cidr-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.telegram-cidr-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.telegram-cidr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.telegram-cidr-actions .secondary-btn {
+  min-width: 148px;
+}
+
+#telegramCidrText {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .runtime-tools {
@@ -1617,6 +1728,11 @@ select:focus {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.fakeip-settings {
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+
 .node-card:hover {
   border-color: rgba(0, 122, 255, 0.28);
   background: rgba(255, 255, 255, 0.94);
@@ -1809,4 +1925,32 @@ select:focus {
 
 .node-primary-actions .secondary-btn {
   order: 1;
+}
+
+@media (max-width: 980px) {
+  .fakeip-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .policy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .policy-option {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 780px) {
+  .telegram-cidr-head {
+    grid-template-columns: 1fr;
+  }
+
+  .telegram-cidr-actions {
+    justify-content: stretch;
+  }
+
+  .telegram-cidr-actions .secondary-btn {
+    flex: 1 1 160px;
+  }
 }
