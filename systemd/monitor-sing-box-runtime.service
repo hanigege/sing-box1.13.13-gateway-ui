@@ -1,0 +1,10 @@
+[Unit]
+Description=Monitor sing-box gateway runtime network state
+Documentation=https://sing-box.sagernet.org
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# 只在 LAN IPv4、IPv6 前缀、监听地址或服务状态异常时修复；正常状态不重启，避免扰动 UI 和分流。
+ExecStart=/usr/local/sbin/monitor-sing-box-runtime

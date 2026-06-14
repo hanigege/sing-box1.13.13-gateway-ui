@@ -212,6 +212,8 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
             ],
             "rules": [
                 {"rule_set": "custom-blacklist", "action": "reject"},
+                # 白名单既然要直连，DNS 也必须返回真实地址；否则 LAN 兜底 FakeIP 会让 IPv6 外测继续进入代理链路。
+                {"rule_set": "custom-whitelist", "action": "route", "server": "local-dns", "rewrite_ttl": 60},
                 {"rule_set": "custom-greylist", "action": "route", "server": "fakeip-dns", "rewrite_ttl": 60, "query_type": ["A", "AAAA"]},
                 {"rule_set": "custom-ddns", "action": "route", "server": "local-dns", "rewrite_ttl": 60},
                 {"inbound": dns_inbounds, "rule_set": "custom-ddns", "action": "route", "server": "local-dns", "rewrite_ttl": 60},
@@ -244,6 +246,8 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
             ],
             "rules": [
                 {"inbound": dns_inbounds, "action": "hijack-dns"},
+                # 只拦 FakeIP 的 UDP/443，促使浏览器回落 TCP；不能拦全部代理域名，否则会扩大到真实 UDP 业务并拖慢访问。
+                {"network": "udp", "port": 443, "ip_cidr": [fake4, fake6], "outbound": "block"},
                 {"inbound": "tproxy-in", "action": "sniff", "sniffer": ["tls", "http"], "timeout": "300ms"},
                 {"rule_set": "custom-blacklist", "outbound": "block"},
                 {"rule_set": "custom-whitelist", "outbound": "direct"},
@@ -253,8 +257,6 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
                 {"rule_set": ["geosite-speedtest"], "outbound": "direct"},
                 # Telegram 客户端可能直接连接官方 IP 段，域名和 IP 规则都要在 FakeIP 捕获前送代理。
                 {"rule_set": ["geosite-telegram", "geoip-telegram"], "outbound": "Proxy"},
-                # 只拦 FakeIP 的 UDP/443，让浏览器回落 TCP，减少 QUIC 长连接压住代理节点。
-                {"network": "udp", "port": 443, "ip_cidr": [fake4, fake6], "outbound": "block"},
                 {"ip_cidr": [fake4, fake6], "outbound": "Proxy"},
                 {"ip_is_private": True, "outbound": "direct"},
                 {"rule_set": ["geosite-geolocation-!cn"], "outbound": "Proxy"},

@@ -180,14 +180,17 @@ install_files() {
   install -m 0755 "$PROJECT_DIR/scripts/sing-box-gateway-info" /usr/local/bin/sing-box-gateway-info
   install -m 0755 "$PROJECT_DIR/scripts/uninstall.sh" /usr/local/bin/sing-box-gateway-uninstall
   install -m 0755 "$PROJECT_DIR/scripts/refresh_runtime_config.py" /usr/local/sbin/refresh-sing-box-runtime-config
+  install -m 0755 "$PROJECT_DIR/scripts/monitor_runtime.py" /usr/local/sbin/monitor-sing-box-runtime
   install -m 0644 "$PROJECT_DIR/systemd/singbox-rule-ui.service" /etc/systemd/system/singbox-rule-ui.service
   install -m 0755 "$PROJECT_DIR/scripts/update-sing-box-rules-jsdelivr" /usr/local/sbin/update-sing-box-rules-jsdelivr
   install -m 0644 "$PROJECT_DIR/systemd/update-sing-box-rules-jsdelivr.service" /etc/systemd/system/update-sing-box-rules-jsdelivr.service
   install -m 0644 "$PROJECT_DIR/systemd/update-sing-box-rules-jsdelivr.timer" /etc/systemd/system/update-sing-box-rules-jsdelivr.timer
   install -m 0644 "$PROJECT_DIR/systemd/sing-box.service" /etc/systemd/system/sing-box.service
   install -m 0644 "$PROJECT_DIR/systemd/sing-box-tproxy.service" /etc/systemd/system/sing-box-tproxy.service
+  install -m 0644 "$PROJECT_DIR/systemd/monitor-sing-box-runtime.service" /etc/systemd/system/monitor-sing-box-runtime.service
+  install -m 0644 "$PROJECT_DIR/systemd/monitor-sing-box-runtime.timer" /etc/systemd/system/monitor-sing-box-runtime.timer
   # 清理旧版 helper；旧脚本会无条件写入 radvd.conf 并启动 RA 广播。
-  rm -f /usr/local/sbin/refresh-sing-box-tproxy-setup
+  install -m 0755 "$PROJECT_DIR/scripts/sync_tproxy_setup.py" /usr/local/sbin/refresh-sing-box-tproxy-setup
 }
 
 configure_journald_limits() {
@@ -376,6 +379,7 @@ enable_services() {
   systemctl enable --now sing-box.service
   systemctl enable --now singbox-rule-ui.service
   systemctl enable --now update-sing-box-rules-jsdelivr.timer
+  systemctl enable --now monitor-sing-box-runtime.timer
 }
 
 refresh_tproxy_after_start() {

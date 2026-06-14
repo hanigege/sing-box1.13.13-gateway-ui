@@ -119,10 +119,17 @@ curl -fsSL https://github.com/hanigege/sing-box-gateway-ui/raw/refs/heads/main/s
 - 自定义规则文件：`/etc/sing-box/custom-rules/`
 - TProxy 脚本：`/usr/local/sbin/sing-box-tproxy-setup`
 - TProxy sysctl：`/etc/sysctl.d/99-sing-box-tproxy.conf`
+- 运行状态自愈检查：`monitor-sing-box-runtime.timer` / `/usr/local/sbin/monitor-sing-box-runtime`
 
 客户端 DNS 进入 sing-box 后，国内直连域名会交给 `local-dns` 解析。`local-dns` 默认使用 DNSPod UDP：`119.29.29.29:53`。规则 UI 的节点页可以把国内 DNS 手动切换为 DNSPod `119.29.29.29`、阿里 `223.5.5.5` 或 114 DNS `114.114.114.114`，并可实时检测网关机到这些 DNS 的 UDP 查询延时，方便按当前网络环境选择。当前内置 sing-box 版本的 DNS 规则只能把一次查询路由到一个 DNS server tag，不提供多个上游并发择快或自动备用的 DNS 组；因此 UI 里的延时只用于辅助用户手动选择单个 `local-dns`，不会把多个上游伪装成“并发最快/自动备份”。
 
 代理节点添加后，sing-box 机器本机的 DNS 不必须指向自己。更稳的做法通常是让宿主机继续使用原来的上游 DNS，例如 Cloud-Init、前端软路由、内网 DNS 或运营商 DNS；这样 sing-box 自己解析代理节点域名时不会形成自我依赖。
+
+### 运行状态自愈
+
+安装器会启用 `monitor-sing-box-runtime.timer`。它每 2 分钟检查一次当前 LAN IPv4、默认网卡、IPv6 前缀、DNS 监听地址和核心服务状态；只有发现运行配置和当前网络状态不一致，或 `sing-box`、`sing-box-tproxy`、规则 UI 服务异常时，才会刷新配置或重启对应服务。正常状态下它只记录检查结果，不会反复重启。
+
+这个自愈检查只管理 sing-box 网关本机，不会登录 RouterOS/OpenWrt，也不会改上游路由器的 DHCP、RA、NAT 或防火墙配置。IPv6 LAN 已经拿到公网前缀时，不建议在上游路由器开启 IPv6 masquerade/NAT66，否则客户端 IPv6 可能被改成路由器地址后超时。
 
 真正需要交给 sing-box 的，是希望被规则分流管理的客户端 DNS。只有客户端 DNS 请求最终进入 sing-box，白名单、黑名单、灰名单、FakeIP 和域名分流规则才会完整生效。实现方式可以是：
 

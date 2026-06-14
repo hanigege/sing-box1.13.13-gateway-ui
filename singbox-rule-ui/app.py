@@ -555,6 +555,7 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR, normalized_lists=N
     apply_local_dns_settings(config, groups)
     apply_fakeip_settings(config, groups)
     apply_blacklist_dns_reject(config)
+    apply_whitelist_dns_direct(config)
     apply_greylist_dns_fakeip(config, groups)
     apply_inbound_dns_fakeip_fallback(config, groups)
     apply_ddns_dns_settings(config, groups)
@@ -834,12 +835,27 @@ def apply_fakeip_quic_policy(config, groups):
             and rule.get("network") == "udp"
             and rule.get("port") == 443
             and rule.get("outbound") == "block"
-            and isinstance(rule.get("ip_cidr"), list)
-            and any(str(item) in fake_networks for item in rule.get("ip_cidr", []))
+            and (
+                (
+                    isinstance(rule.get("ip_cidr"), list)
+                    and any(str(item) in fake_networks for item in rule.get("ip_cidr", []))
+                )
+                or rule.get("rule_set") in (CUSTOM_TAGS["greylist"], "geosite-geolocation-!cn")
+                or (
+                    isinstance(rule.get("rule_set"), list)
+                    and any(item in {CUSTOM_TAGS["greylist"], "geosite-geolocation-!cn"} for item in rule.get("rule_set", []))
+                )
+            )
         )
     ]
     insert_at = 0
     for index, rule in enumerate(rules):
+        if isinstance(rule, dict) and rule.get("action") == "hijack-dns":
+            insert_at = index + 1
+            continue
+        if isinstance(rule, dict) and rule.get("action") == "sniff":
+            insert_at = index
+            break
         if (
             isinstance(rule, dict)
             and rule.get("outbound") == "Proxy"
@@ -848,7 +864,7 @@ def apply_fakeip_quic_policy(config, groups):
         ):
             insert_at = index
             break
-    # 只拦 FakeIP 的 UDP/443，促使浏览器回落 TCP，避免 QUIC 长连接压住代理节点；真实 IP 的游戏 UDP 不受影响。
+    # 只拦 FakeIP 的 UDP/443，促使浏览器回落 TCP；不能拦全部代理域名，否则会扩大到真实 UDP 业务并拖慢访问。
     rules.insert(insert_at, {"network": "udp", "port": 443, "ip_cidr": [fakeip4, fakeip6], "outbound": "block"})
 
 
@@ -1025,6 +1041,26 @@ def apply_blacklist_dns_reject(config):
         if not (isinstance(rule, dict) and rule.get("rule_set") == CUSTOM_TAGS["blacklist"] and rule.get("action") == "reject")
     ]
     dns_rules.insert(0, {"rule_set": CUSTOM_TAGS["blacklist"], "action": "reject"})
+
+
+def apply_whitelist_dns_direct(config):
+    dns_rules = config.setdefault("dns", {}).setdefault("rules", [])
+    dns_rules[:] = [
+        rule
+        for rule in dns_rules
+        if not (
+            isinstance(rule, dict)
+            and rule.get("rule_set") == CUSTOM_TAGS["whitelist"]
+            and rule.get("action") == "route"
+        )
+    ]
+    insert_at = 0
+    for index, rule in enumerate(dns_rules):
+        if isinstance(rule, dict) and rule.get("rule_set") == CUSTOM_TAGS["blacklist"] and rule.get("action") == "reject":
+            insert_at = index + 1
+            break
+    # 白名单既然要直连，DNS 也必须返回真实地址；否则 LAN 兜底 FakeIP 会让 IPv6 外测继续进入代理链路。
+    dns_rules.insert(insert_at, {"rule_set": CUSTOM_TAGS["whitelist"], "action": "route", "server": "local-dns", "rewrite_ttl": 60})
 
 
 def apply_greylist_dns_fakeip(config, groups=None):
@@ -2142,7 +2178,8 @@ def maintenance_status():
             "currentIpv6Prefixes": current_v6,
             "currentIpv4Prefixes": current_ipv4_prefixes(iface),
             "scriptIpv6Prefixes": script_v6,
-            "ipv6PrefixMatches": not script_v6 or any(item in script_v6 for item in current_v6),
+            # 多个公网 IPv6 前缀会同时下发给旁路网关；只命中其中一个仍会让另一个真实前缀误走 TProxy，状态页必须完整提示需要重新同步。
+            "ipv6PrefixMatches": not script_v6 or all(item in script_v6 for item in current_v6),
             "outboundServerIps": outbound_server_ips(),
             "outboundServers": resolved_outbound_servers(),
             "planned": tproxy_bypass_sets(),
