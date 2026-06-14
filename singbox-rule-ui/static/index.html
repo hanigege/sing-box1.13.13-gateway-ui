@@ -134,6 +134,14 @@
               <strong data-i18n="fakeipQuicPolicy">FakeIP QUIC protection is always on</strong>
               <small data-i18n="fakeipQuicPolicyHelp">UDP/443 to FakeIP ranges is blocked so browsers fall back to TCP and proxy latency stays stable.</small>
             </div>
+            <label class="checkline fakeip-toggle wide-field">
+              <input id="telegramCaptureIps" type="checkbox" checked />
+              <span data-i18n="telegramCaptureIps">Proxy Telegram official IP ranges</span>
+            </label>
+            <div class="policy-note wide-field">
+              <strong data-i18n="telegramPolicy">Telegram IP capture</strong>
+              <small data-i18n="telegramPolicyHelp">Telegram clients may connect to official IPs directly. This keeps those explicit service ranges in TProxy without capturing all public IP traffic.</small>
+            </div>
           </section>
 
           <form id="nodeForm" class="node-form">
