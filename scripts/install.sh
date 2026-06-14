@@ -142,10 +142,7 @@ choose_sing_box_runtime() {
 }
 
 install_sing_box() {
-  if command -v /usr/local/bin/sing-box >/dev/null 2>&1; then
-    echo "sing-box already installed: $(/usr/local/bin/sing-box version | head -n 1)"
-    return
-  fi
+  local arch archive sums archive_name expected actual tmp current_version backup
   arch="$(detect_arch)"
   archive="$PROJECT_DIR/third_party/sing-box/v${SING_BOX_BUNDLED_VERSION}/sing-box-${SING_BOX_BUNDLED_VERSION}-linux-${arch}.tar.gz"
   sums="$PROJECT_DIR/third_party/sing-box/v${SING_BOX_BUNDLED_VERSION}/SHA256SUMS"
@@ -167,11 +164,29 @@ install_sing_box() {
     fi
   fi
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  # trap 在函数返回后才执行，不能引用局部变量名；直接固化临时目录路径，避免 set -u 下退出时报错。
+  trap "rm -rf '$tmp'" EXIT
+  if command -v /usr/local/bin/sing-box >/dev/null 2>&1; then
+    current_version="$(/usr/local/bin/sing-box version 2>/dev/null | head -n 1 || true)"
+    if [ -n "$current_version" ] && printf "%s" "$current_version" | grep -q "$SING_BOX_BUNDLED_VERSION"; then
+      echo "sing-box already installed: $current_version"
+      state_set sing_box_binary installed
+      state_set sing_box_bundled_version "$SING_BOX_BUNDLED_VERSION"
+      return
+    fi
+    backup="/usr/local/bin/sing-box.bak-gateway-$(date +%Y%m%d-%H%M%S)"
+    # 小白仓库固定验证 1.13.13；已有其它版本时先备份再替换，避免配置和二进制版本错配。
+    cp -a /usr/local/bin/sing-box "$backup"
+    echo "Backed up existing sing-box to $backup"
+    state_set sing_box_binary replaced
+    state_set sing_box_binary_backup "$backup"
+  else
+    state_set sing_box_binary installed
+  fi
   echo "Installing bundled sing-box ${SING_BOX_BUNDLED_VERSION} (${arch})"
   tar -xzf "$archive" -C "$tmp"
   install -m 0755 "$tmp"/sing-box-*/sing-box /usr/local/bin/sing-box
-  state_set sing_box_binary installed
+  state_set sing_box_bundled_version "$SING_BOX_BUNDLED_VERSION"
 }
 
 install_files() {
@@ -270,9 +285,8 @@ PY
 }
 
 port53_owners() {
-  ss -H -ltnup 'sport = :53' 2>/dev/null | awk '
-    match($0, /users:\(\("([^"]+)"/, m) { print m[1] }
-  ' | sort -u | paste -sd, -
+  # Debian 13 默认 awk 不支持 match(..., array)，用 sed 提取进程名以兼容 mawk/gawk。
+  ss -H -ltnup 'sport = :53' 2>/dev/null | sed -n 's/.*users:((\"\([^\"]*\)\".*/\1/p' | sort -u | paste -sd, -
 }
 
 disable_systemd_resolved_stub() {
@@ -380,6 +394,10 @@ enable_services() {
   systemctl enable --now singbox-rule-ui.service
   systemctl enable --now update-sing-box-rules-jsdelivr.timer
   systemctl enable --now monitor-sing-box-runtime.timer
+  # 覆盖安装会替换二进制、UI 文件和 systemd 单元；active 服务必须显式重启，不能只依赖 enable --now。
+  systemctl restart sing-box-tproxy.service
+  systemctl restart sing-box.service
+  systemctl restart singbox-rule-ui.service
 }
 
 refresh_tproxy_after_start() {
