@@ -208,6 +208,14 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
                     "server_port": 53,
                     # 国内直连域名优先使用 DNSPod UDP，当前 sing-box 版本没有 DNS 上游并发/自动备用组；223.5.5.5 只作为手动回退参考，不能伪装成自动备份。
                 },
+                {
+                    "tag": "ddns-remote-dns",
+                    "type": "udp",
+                    "server": "1.1.1.1",
+                    "server_port": 53,
+                    "detour": "Proxy",
+                    # DDNS 的代理解析只需要从代理出口查真实地址；不要复用 remote-dns 的 DoH 长连接，避免直连 DDNS 业务被 DNS 旧连接拖住。
+                },
                 {"tag": "fakeip-dns", "type": "fakeip", "inet4_range": fake4, "inet6_range": fake6},
             ],
             "rules": [
