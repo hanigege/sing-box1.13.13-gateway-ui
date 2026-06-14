@@ -262,7 +262,14 @@ def base_config(lan_ip, ui_secret, fake4, fake6, ipv6_dns_listen):
             ],
             "rules": [
                 {"inbound": dns_inbounds, "action": "hijack-dns"},
-                # 只拦 FakeIP 的 UDP/443，促使浏览器回落 TCP；不能拦全部代理域名，否则会扩大到真实 UDP 业务并拖慢访问。
+                # FakeIP 视频连接可能在路由阶段被还原成域名；域名兜底只收窄到 YouTube/Google 视频，避免误伤其它 UDP/443。
+                {
+                    "network": "udp",
+                    "port": 443,
+                    "domain_suffix": ["googlevideo.com", "youtube.com", "youtube-nocookie.com", "ytimg.com", "ggpht.com", "googleusercontent.com"],
+                    "outbound": "block",
+                },
+                # 同时保留 CIDR 保护，覆盖尚未还原域名的 FakeIP UDP/443；不能扩大到全部 UDP，否则会影响游戏和语音。
                 {"network": "udp", "port": 443, "ip_cidr": [fake4, fake6], "outbound": "block"},
                 {"inbound": "tproxy-in", "action": "sniff", "sniffer": ["tls", "http"], "timeout": "300ms"},
                 {"rule_set": "custom-blacklist", "outbound": "block"},

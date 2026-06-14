@@ -1815,21 +1815,9 @@ function delayTone(tag) {
   return "bad";
 }
 
-function fastestDelayTag() {
-  let bestTag = "";
-  let bestDelay = Infinity;
-  for (const tag of enabledNodeTags()) {
-    const delay = delays[tag]?.delay;
-    if (Number.isInteger(delay) && delay < bestDelay) {
-      bestTag = tag;
-      bestDelay = delay;
-    }
-  }
-  return bestTag;
-}
-
 function autoDisplayTag() {
-  return runtimeProxy.autoNow || fastestDelayTag();
+  // Auto 的真实选择只能以 Clash API 的 Auto.now 为准；延迟 history 只用于展示，不能推断当前出站。
+  return runtimeProxy.autoNow || "";
 }
 
 function dnsChoices() {
@@ -2107,6 +2095,7 @@ async function chooseDefault(tag) {
     });
     state = result.state || state;
     maintenance = result.maintenance || maintenance;
+    if (result.proxyAfterProbe) applyProxyPayload({ proxy: result.proxyAfterProbe });
     await loadProxyInfo(false);
     setDirty(false);
     loadProxyInfo(true).then(() => render()).catch(() => {});
@@ -2313,6 +2302,7 @@ async function save() {
     });
     state = result.state;
     maintenance = result.maintenance || maintenance;
+    if (result.proxy) applyProxyPayload({ proxy: result.proxy, delays: result.delays });
     await loadProxyInfo(false);
     if (editingNodeTag && getNode(editingNodeTag)) {
       editingNodeSnapshot = stableNodeString(buildNodeFromForm());
