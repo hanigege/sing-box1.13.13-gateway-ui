@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${SING_BOX_GATEWAY_REPO:-hanigege/sing-box-gateway-ui}"
+REPO="${SING_BOX_GATEWAY_REPO:-hanigege/sing-box1.13.13-gateway-ui}"
 REF="${SING_BOX_GATEWAY_REF:-main}"
 ACTION="${1:-install}"
 PROXY_PREFIX="${SING_BOX_GATEWAY_PROXY_PREFIX:-https://scg.jgaga.tk/}"
@@ -50,7 +50,7 @@ download_urls() {
   printf "%s\n" "$url"
 }
 
-echo "正在下载 sing-box-gateway-ui ${REPO}@${REF}..."
+echo "正在下载 sing-box1.13.13-gateway-ui ${REPO}@${REF}..."
 archive_url="https://github.com/${REPO}/archive/refs/heads/${REF}.tar.gz"
 archive_urls=($(download_urls "$archive_url"))
 download_first "$archive" "${archive_urls[@]}"
