@@ -69,6 +69,14 @@ LOCAL_DNS_SERVER = {
     "server_port": 53,
     # 国内直连域名只会路由到一个 local-dns；当前 sing-box 没有 DNS 并发/备用组，UI 只能明确选择单个上游。
 }
+DDNS_REMOTE_DNS_SERVER = {
+    "tag": "ddns-remote-dns",
+    "type": "udp",
+    "server": "1.1.1.1",
+    "server_port": 53,
+    "detour": "Proxy",
+    # DDNS 的“代理解析”只需要从代理出口查真实地址；单独用 UDP，避免复用 remote-dns 的 DoH 长连接导致直连业务假死。
+}
 LOCAL_DNS_CHOICES = {
     "dnspod": {"label": "DNSPod", "server": "119.29.29.29", "server_port": 53},
     "alidns": {"label": "AliDNS", "server": "223.5.5.5", "server_port": 53},
@@ -553,6 +561,7 @@ def render_config(nodes=None, groups=None, rule_dir=RULE_DIR, normalized_lists=N
     apply_portable_listeners(config)
     apply_cache_file_settings(config)
     apply_local_dns_settings(config, groups)
+    apply_ddns_remote_dns_settings(config)
     apply_fakeip_settings(config, groups)
     apply_blacklist_dns_reject(config)
     apply_whitelist_dns_direct(config)
@@ -1033,6 +1042,22 @@ def apply_local_dns_settings(config, groups):
     target.update(desired)
 
 
+def apply_ddns_remote_dns_settings(config):
+    servers = config.setdefault("dns", {}).setdefault("servers", [])
+    desired = json.loads(json.dumps(DDNS_REMOTE_DNS_SERVER))
+    target = None
+    for server in servers:
+        if isinstance(server, dict) and server.get("tag") == desired["tag"]:
+            target = server
+            break
+    if target is None:
+        servers.append(desired)
+        return
+    target.clear()
+    # 这个 server 是 DDNS remote 模式的稳定边界，保存时必须恢复到受管理定义，避免回退到 DoH 长连接。
+    target.update(desired)
+
+
 def apply_blacklist_dns_reject(config):
     dns_rules = config.setdefault("dns", {}).setdefault("rules", [])
     dns_rules[:] = [
@@ -1176,7 +1201,7 @@ def same_inbound(value, tags):
 
 def apply_ddns_dns_settings(config, groups):
     mode = groups.get("ddns", {}).get("dns", "local")
-    server = "remote-dns" if mode == "remote" else "local-dns"
+    server = "ddns-remote-dns" if mode == "remote" else "local-dns"
     dns_rules = config.setdefault("dns", {}).setdefault("rules", [])
     for rule in dns_rules:
         if isinstance(rule, dict) and rule.get("rule_set") == CUSTOM_TAGS["ddns"]:
