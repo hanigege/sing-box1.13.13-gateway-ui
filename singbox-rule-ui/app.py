@@ -1055,6 +1055,14 @@ def apply_fakeip_quic_policy(config, groups):
         fakeip4,
         fakeip6,
     }
+    youtube_quic_domains = [
+        "googlevideo.com",
+        "youtube.com",
+        "youtube-nocookie.com",
+        "ytimg.com",
+        "ggpht.com",
+        "googleusercontent.com",
+    ]
     rules = config.setdefault("route", {}).setdefault("rules", [])
     rules[:] = [
         rule
@@ -1074,16 +1082,12 @@ def apply_fakeip_quic_policy(config, groups):
                     isinstance(rule.get("rule_set"), list)
                     and any(item in {CUSTOM_TAGS["greylist"], "geosite-geolocation-!cn"} for item in rule.get("rule_set", []))
                 )
+                or (
+                    isinstance(rule.get("domain_suffix"), list)
+                    and any(str(item) in youtube_quic_domains for item in rule.get("domain_suffix", []))
+                )
             )
         )
-    ]
-    youtube_quic_domains = [
-        "googlevideo.com",
-        "youtube.com",
-        "youtube-nocookie.com",
-        "ytimg.com",
-        "ggpht.com",
-        "googleusercontent.com",
     ]
     insert_at = 0
     for index, rule in enumerate(rules):
