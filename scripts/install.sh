@@ -110,35 +110,10 @@ detect_arch() {
   esac
 }
 
-ask() {
-  local prompt="$1" default="${2:-}" value suffix=""
-  [ -n "$default" ] && suffix=" [$default]"
-  if [ "${SING_BOX_GATEWAY_ASSUME_DEFAULTS:-0}" = "1" ]; then
-    printf "%s\n" "$default"
-    return
-  fi
-  if [ -r /dev/tty ]; then
-    printf "%s%s: " "$prompt" "$suffix" > /dev/tty
-    IFS= read -r value < /dev/tty || value=""
-  else
-    value=""
-  fi
-  printf "%s\n" "${value:-$default}"
-}
-
 choose_sing_box_runtime() {
-  if [ "${SING_BOX_GATEWAY_ASSUME_DEFAULTS:-0}" = "1" ]; then
-    SING_BOX_ARCH="${SING_BOX_ARCH:-auto}"
-    return
-  fi
-  if [ ! -r /dev/tty ]; then
-    echo "No interactive terminal detected; using bundled sing-box ${SING_BOX_BUNDLED_VERSION} and auto architecture."
-    SING_BOX_ARCH="${SING_BOX_ARCH:-auto}"
-    return
-  fi
-  echo
-  echo "sing-box binary: bundled ${SING_BOX_BUNDLED_VERSION} (repository-tested)"
-  SING_BOX_ARCH="$(ask "CPU architecture: auto/amd64/arm64" "$SING_BOX_ARCH")"
+  # 安装阶段不再读取终端输入；架构保持 auto，由 detect_arch 根据 uname -m 选择 amd64/arm64 包。
+  SING_BOX_ARCH="${SING_BOX_ARCH:-auto}"
+  echo "sing-box binary: bundled ${SING_BOX_BUNDLED_VERSION} (repository-tested, arch: ${SING_BOX_ARCH})"
 }
 
 install_sing_box() {

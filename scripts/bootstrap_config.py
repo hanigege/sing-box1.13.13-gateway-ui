@@ -15,37 +15,9 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 BASE_CONFIG_PATH = MANAGER_DIR / "base.json"
 NODES_PATH = MANAGER_DIR / "nodes.json"
 GROUPS_PATH = MANAGER_DIR / "groups.json"
-INITIAL_NODES_FILE = os.environ.get("SING_BOX_INITIAL_NODES_FILE", "")
 DEFAULT_FAKE4 = "28.0.0.0/8"
 DEFAULT_FAKE6 = "2001:2::/64"
-
-
-def ask(prompt, default=""):
-    suffix = f" [{default}]" if default else ""
-    try:
-        value = input(f"{prompt}{suffix}: ").strip()
-    except EOFError:
-        print()
-        value = ""
-    return value or default
-
-
-def ask_int(prompt, default):
-    while True:
-        value = ask(prompt, str(default))
-        try:
-            number = int(value)
-            if 1 <= number <= 65535:
-                return number
-        except ValueError:
-            pass
-        print("Please enter a valid port.")
-
-
-def ask_yes_no(prompt, default=True):
-    default_text = "yes" if default else "no"
-    value = ask(prompt, default_text).lower()
-    return value in {"y", "yes", "1", "true"}
+INITIAL_NODES_FILE = os.environ.get("SING_BOX_INITIAL_NODES_FILE", "")
 
 
 def default_lan_ip():
@@ -86,47 +58,6 @@ def write_json(path, data):
     finally:
         if temp_path.exists():
             temp_path.unlink()
-
-
-def node_from_prompt(index, default_type):
-    node_type = ask(f"Node {index} type: hysteria2 or vless", default_type)
-    if node_type not in {"hysteria2", "vless"}:
-        raise ValueError("Unsupported node type")
-    tag = ask("Node tag", f"{node_type}-{index}")
-    server = ask("Node server IP/domain")
-    port = ask_int("Node port", 443)
-    sni = ask("TLS server_name", server)
-    insecure = ask("Allow insecure TLS? yes/no", "yes").lower() in {"y", "yes", "1", "true"}
-    outbound = {
-        "type": node_type,
-        "tag": tag,
-        "server": server,
-        "server_port": port,
-        "tls": {"enabled": True, "server_name": sni, "insecure": insecure},
-    }
-    if node_type == "hysteria2":
-        outbound["password"] = ask("Hysteria2 password")
-        obfs = ask("Obfs password, empty to disable", "")
-        if obfs:
-            outbound["obfs"] = {"type": "salamander", "password": obfs}
-        up = ask("Up Mbps, empty to skip", "")
-        down = ask("Down Mbps, empty to skip", "")
-        if up:
-            outbound["up_mbps"] = int(up)
-        if down:
-            outbound["down_mbps"] = int(down)
-    else:
-        outbound["uuid"] = ask("VLESS UUID")
-        outbound["packet_encoding"] = "xudp"
-        outbound["tcp_fast_open"] = True
-        outbound["tls"]["utls"] = {"enabled": True, "fingerprint": "chrome"}
-        public_key = ask("Reality public_key, empty to disable Reality", "")
-        if public_key:
-            outbound["tls"]["reality"] = {"enabled": True, "public_key": public_key}
-            short_id = ask("Reality short_id, empty to skip", "")
-            if short_id:
-                outbound["tls"]["reality"]["short_id"] = short_id
-    return {"enabled": True, "outbound": outbound}
 
 
 def template_nodes():
@@ -302,30 +233,16 @@ def main():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     MANAGER_DIR.mkdir(parents=True, exist_ok=True)
     RULE_DIR.mkdir(parents=True, exist_ok=True)
-    simple_mode = ask_yes_no("Use simple mode? Start first, edit nodes and advanced options later in UI.", True)
-    lan_ip = ask("LAN IPv4 address for sing-box/UI", default_lan_ip())
-    if simple_mode:
-        fake4 = DEFAULT_FAKE4
-        fake6 = DEFAULT_FAKE6
-        ipv6_dns = ""
-    else:
-        fake4 = ask("FakeIP IPv4 range", DEFAULT_FAKE4)
-        fake6 = ask("FakeIP IPv6 range", DEFAULT_FAKE6)
-        ipv6_dns = ask("IPv6 DNS listen address, empty to disable", "")
-        if ipv6_dns:
-            ipaddress.ip_address(ipv6_dns)
+    # 一键安装不做任何命令行交互：先用可启动的简单配置落地，节点和高级参数交给 UI 修改。
+    lan_ip = default_lan_ip()
+    fake4 = DEFAULT_FAKE4
+    fake6 = DEFAULT_FAKE6
+    ipv6_dns = ""
     fake4 = normalize_cidr(fake4, "FakeIP IPv4 range")
     fake6 = normalize_cidr(fake6, "FakeIP IPv6 range")
     nodes = initial_nodes_from_file()
     if nodes is None:
-        if simple_mode or ask_yes_no("Use two placeholder template nodes and edit them later in UI?", True):
-            nodes = template_nodes()
-        else:
-            node_count = ask_int("Initial node count", 2)
-            nodes = []
-            for index in range(1, node_count + 1):
-                default_type = "hysteria2" if index == 1 else "vless"
-                nodes.append(node_from_prompt(index, default_type))
+        nodes = template_nodes()
     secret = secrets.token_urlsafe(24)
     base = base_config(lan_ip, secret, fake4, fake6, ipv6_dns)
     default_node = nodes[0]["outbound"]["tag"]

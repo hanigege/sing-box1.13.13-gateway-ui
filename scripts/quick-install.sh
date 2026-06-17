@@ -87,12 +87,13 @@ case "$ACTION" in
     ;;
 esac
 
-if [ -r /dev/tty ]; then
+if [ "$ACTION" != "install" ] && [ -n "$ACTION" ] && [ -r /dev/tty ]; then
   exec bash "$target" "${args[@]}" </dev/tty
 fi
 
 if [ "$ACTION" = "install" ] || [ -z "$ACTION" ]; then
-  echo "未检测到可交互终端，将使用默认值继续安装。"
+  # 安装流程必须适配 LXC、管道和远程控制台；初装配置统一走默认值，后续在 UI 里调整。
+  export SING_BOX_GATEWAY_ASSUME_DEFAULTS=1
 else
   args+=("--yes")
 fi
