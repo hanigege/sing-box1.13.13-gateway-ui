@@ -79,19 +79,7 @@ curl -fsSL https://github.com/hanigege/sing-box1.13.13-gateway-ui/raw/refs/heads
 
 安装器只使用仓库自带并验证过的 `sing-box 1.13.13`，不提供自动下载上游最新版，避免 sing-box 配置语法变化导致安装后无法启动。项目源码下载会优先尝试反代地址，失败后再尝试 GitHub 官方地址。
 
-安装器会交互式询问：
-
-- CPU 架构，默认 `auto`，也可以手动选 `amd64` 或 `arm64`
-- 是否使用简单模式，默认 yes
-- sing-box 机器的 LAN IPv4 地址
-
-简单模式会使用默认 FakeIP 网段和两个脱敏模板节点，让 `sing-box` 与 UI 先跑起来。模板节点不能直接代理流量，进入规则 UI 后，把 `TEMPLATE-HY2` 或 `TEMPLATE-VLESS` 改成自己的真实节点即可。
-
-如果选择高级模式，安装器还会询问：
-
-- FakeIP IPv4/IPv6 网段
-- IPv6 DNS 监听地址，不需要可留空
-- 是否使用模板节点，或手动输入节点 tag、server、端口和认证参数
+安装器默认全程非交互，适合 PVE LXC、远程控制台和 `curl | sudo bash` 场景。CPU 架构会自动检测，`x86_64/amd64` 使用内置 `amd64` 包，`aarch64/arm64` 使用内置 `arm64` 包。初装会自动检测 LAN IPv4，使用默认 FakeIP 网段和两个脱敏模板节点，让 `sing-box` 与 UI 先跑起来。模板节点不能直接代理流量，进入规则 UI 后，把 `TEMPLATE-HY2` 或 `TEMPLATE-VLESS` 改成自己的真实节点即可。
 
 安装过程中会先下载必需分流规则、生成 TProxy 规则脚本、检查 53 端口是否可用，并执行 `sing-box check`。如果 53 端口被 `systemd-resolved` 本地 stub 占用，安装器会明确提示正在关闭 `DNSStubListener`，释放成功后继续；如果被其它进程占用，会停止安装并提示用户先处理。检查不通过时不会启用服务。
 
@@ -242,21 +230,19 @@ SING_BOX_ARCH=arm64 sudo bash scripts/install.sh
 
 新版本安装器会在 `/etc/sing-box/manager/install-state` 记录安装前状态，用于卸载时判断哪些文件和依赖可以安全删除。老版本安装没有这份记录时，卸载仍会清理本项目路径和服务，但不会猜测删除安装前状态不明的系统组件。
 
+已安装机器优先使用本地卸载器，不再依赖 GitHub 或反代入口。这样最稳定，也避免卸载时因为外部代理连接被 reset 而无法执行：
+
 ```bash
-curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box1.13.13-gateway-ui/main/scripts/quick-install.sh | sudo bash -s uninstall
+sudo /usr/local/bin/sing-box-gateway-uninstall --yes
 ```
 
 如果没有安装状态记录，但你仍然确认要删除 `/usr/local/bin/sing-box`，可以使用 purge：
 
 ```bash
-curl -fsSL https://scg.jgaga.tk/https://raw.githubusercontent.com/hanigege/sing-box1.13.13-gateway-ui/main/scripts/quick-install.sh | sudo bash -s purge
+sudo /usr/local/bin/sing-box-gateway-uninstall --purge --yes
 ```
 
-直连 GitHub 稳定时也可以使用官方 purge 入口：
-
-```bash
-curl -fsSL https://github.com/hanigege/sing-box1.13.13-gateway-ui/raw/refs/heads/main/scripts/quick-install.sh | sudo bash -s purge
-```
+只有在本地卸载器不存在时，才建议临时重新拉远程脚本执行卸载。远程入口依赖当前网络到 GitHub/反代的可达性，不如本地卸载器稳定。
 
 ## Git 安装
 
