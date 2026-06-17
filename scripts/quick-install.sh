@@ -74,11 +74,11 @@ case "$ACTION" in
     ;;
   uninstall|remove)
     target="$src/scripts/uninstall.sh"
-    args=()
+    args=(--yes)
     ;;
   purge)
     target="$src/scripts/uninstall.sh"
-    args=(--purge)
+    args=(--purge --yes)
     ;;
   *)
     echo "未知操作: $ACTION" >&2
@@ -87,14 +87,8 @@ case "$ACTION" in
     ;;
 esac
 
-if [ "$ACTION" != "install" ] && [ -n "$ACTION" ] && [ -r /dev/tty ]; then
-  exec bash "$target" "${args[@]}" </dev/tty
-fi
-
 if [ "$ACTION" = "install" ] || [ -z "$ACTION" ]; then
   # 安装流程必须适配 LXC、管道和远程控制台；初装配置统一走默认值，后续在 UI 里调整。
   export SING_BOX_GATEWAY_ASSUME_DEFAULTS=1
-else
-  args+=("--yes")
 fi
 exec bash "$target" "${args[@]}"
