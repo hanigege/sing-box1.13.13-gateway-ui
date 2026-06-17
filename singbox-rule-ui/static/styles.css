@@ -764,6 +764,10 @@ input[type="checkbox"] {
   min-width: 112px;
 }
 
+.runtime-tools #runtimeLogLevel {
+  min-width: 128px;
+}
+
 .runtime-rows {
   display: grid;
   gap: 8px;

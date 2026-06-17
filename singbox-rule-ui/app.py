@@ -3096,6 +3096,25 @@ class Handler(BaseHTTPRequestHandler):
         headers = {}
         if api_secret:
             headers["Authorization"] = f"Bearer {api_secret}"
+        if path.startswith("/logs?"):
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.end_headers()
+            request = Request(f"{api_url}{path}", headers=headers)
+            try:
+                with urlopen(request, timeout=timeout) as response:
+                    while True:
+                        chunk = response.read(4096)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            except (HTTPError, URLError, TimeoutError, OSError):
+                # 日志流只是诊断辅助；切换日志级别会重启 sing-box，短暂不可用时结束空流，不把 UI 打成 502。
+                return
+            return
         # 9091 已经完成 Rule UI token 鉴权；这里仅用后端读取到的 Clash secret 访问白名单接口，不能把 secret 暴露给浏览器。
         request = Request(f"{api_url}{path}", headers=headers)
         try:

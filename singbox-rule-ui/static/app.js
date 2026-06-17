@@ -81,10 +81,12 @@ const translations = {
     runtimeViewRules: "Rules",
     noRuntimeRows: "No runtime data",
     waitingRuntimeLogs: "Waiting for logs",
+    idleRuntimeLogs: "No new log lines. Current level only shows warning/error.",
     startLogs: "Start logs",
     stopLogs: "Stop logs",
     logsStreaming: "Streaming logs",
     logsStopped: "Logs stopped",
+    logLevelSaved: "Log level updated",
     connectionHost: "Host",
     connectionType: "Type",
     connectionRoute: "Route",
@@ -341,10 +343,12 @@ const translations = {
     runtimeViewRules: "规则",
     noRuntimeRows: "暂无运行数据",
     waitingRuntimeLogs: "正在接收日志",
+    idleRuntimeLogs: "暂无新日志；当前级别只显示 warning/error。",
     startLogs: "开始日志",
     stopLogs: "停止日志",
     logsStreaming: "正在接收日志",
     logsStopped: "日志已停止",
+    logLevelSaved: "日志级别已更新",
     connectionHost: "目标",
     connectionType: "类型",
     connectionRoute: "路由",
@@ -525,7 +529,7 @@ let token = localStorage.getItem("ruleUiToken") || "";
 let lang = localStorage.getItem("ruleUiLang") || ((navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en");
 let state = { lists: { whitelist: [], blacklist: [], greylist: [], ddns: [] }, nodes: [], groups: {}, meta: {} };
 let maintenance = {};
-let runtime = { connections: [], rules: [], logLevel: "warn", logLines: [] };
+let runtime = { connections: [], rules: [], logLevel: "warn", logLines: [], logIdle: false };
 let runtimeProxy = { now: null, available: false };
 let delays = {};
 let dnsDelays = {};
@@ -582,6 +586,7 @@ function updateButtons() {
   $("updateRulesBtn").disabled = busy;
   $("updateTelegramCidrBtn").disabled = busy;
   $("saveTelegramCidrBtn").disabled = busy;
+  $("runtimeLogLevel").disabled = busy;
   $("saveBtn").disabled = busy || !dirty;
   $("nodeSubmit").disabled = busy || Boolean(editingNodeTag && !nodeEditChanged);
   const scheduleSave = $("saveRuleScheduleBtn");
@@ -681,7 +686,7 @@ function logout() {
   localStorage.removeItem("ruleUiToken");
   state = { lists: { whitelist: [], blacklist: [], greylist: [], ddns: [] }, nodes: [], groups: {}, meta: {} };
   maintenance = {};
-  runtime = { connections: [], rules: [], logLevel: "warn", logLines: [] };
+  runtime = { connections: [], rules: [], logLevel: "warn", logLines: [], logIdle: false };
   stopRuntimeLogs(false);
   stopRuntimePolling();
   runtimeProxy = { now: null, available: false };
@@ -812,6 +817,10 @@ function applyLanguage() {
   $("runtimeView").querySelector('option[value="connections"]').textContent = t("runtimeViewConnections");
   $("runtimeView").querySelector('option[value="logs"]').textContent = t("runtimeViewLogs");
   $("runtimeView").querySelector('option[value="rules"]').textContent = t("runtimeViewRules");
+  $("runtimeLogLevel").querySelector('option[value="error"]').textContent = "error";
+  $("runtimeLogLevel").querySelector('option[value="warn"]').textContent = "warning";
+  $("runtimeLogLevel").querySelector('option[value="info"]').textContent = "info";
+  $("runtimeLogLevel").querySelector('option[value="debug"]').textContent = "debug";
   $("nodeSubmit").textContent = editingNodeTag ? t("updateNode") : t("addNode");
   $("nodeCancel").textContent = t("cancelEdit");
 }
@@ -1297,7 +1306,7 @@ function renderRuntimeRules(rows) {
 }
 
 function renderRuntimeLogs() {
-  if (!runtime.logLines.length) return renderRuntimeEmpty(logStreamController ? t("waitingRuntimeLogs") : t("noRuntimeRows"));
+  if (!runtime.logLines.length) return renderRuntimeEmpty(logStreamController ? (runtime.logIdle ? t("idleRuntimeLogs") : t("waitingRuntimeLogs")) : t("noRuntimeRows"));
   const list = document.createElement("div");
   list.className = "runtime-log-list";
   runtime.logLines.forEach((raw, index) => {
@@ -1312,6 +1321,9 @@ function renderRuntimeLogs() {
       if (match) {
         level = match[1];
         payload = match[2];
+      } else {
+        const plainLevel = raw.match(/\b(ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|PANIC)\b/i);
+        if (plainLevel) level = plainLevel[1].toLowerCase();
       }
     }
     const row = document.createElement("div");
@@ -1349,11 +1361,36 @@ function renderRuntime() {
   $("runtimeTitle").textContent = t("runtime");
   $("runtimeSummary").textContent = t("runtimeNote");
   const view = $("runtimeView").value || "connections";
+  $("runtimeLogLevel").classList.toggle("hidden", view !== "logs");
+  $("runtimeLogLevel").value = runtime.logLevel === "warning" ? "warn" : runtime.logLevel || "warn";
   const rows = $("runtimeRows");
   rows.innerHTML = "";
   if (view === "connections") rows.appendChild(renderRuntimeConnections(runtime.connections || []));
   else if (view === "rules") rows.appendChild(renderRuntimeRules(runtime.rules || []));
   else rows.appendChild(renderRuntimeLogs());
+}
+
+async function changeRuntimeLogLevel() {
+  const level = $("runtimeLogLevel").value;
+  setBusy(true);
+  setStatus(t("refreshingRuntime"));
+  try {
+    const result = await api("/api/runtime/log-level", { method: "POST", body: JSON.stringify({ level }) });
+    if (!result.ok) throw new Error(result.error || t("actionFailed"));
+    runtime.logLevel = result.level || level;
+    if (result.state) state = result.state;
+    stopRuntimeLogs(false);
+    render();
+    setStatus(t("logLevelSaved"), "ok");
+    setTimeout(() => {
+      if (active === "runtime" && $("runtimeView").value === "logs" && !logStreamController) startRuntimeLogs();
+    }, 1200);
+  } catch (error) {
+    setStatus(error.message, "bad");
+    $("runtimeLogLevel").value = runtime.logLevel === "warning" ? "warn" : runtime.logLevel || "warn";
+  } finally {
+    setBusy(false);
+  }
 }
 
 function stopRuntimePolling() {
@@ -1410,14 +1447,22 @@ function stopRuntimeLogs(updateStatus = true) {
 async function startRuntimeLogs() {
   stopRuntimeLogs(false);
   runtime.logLines = [];
+  runtime.logIdle = false;
   const controller = new AbortController();
   logStreamController = controller;
   render();
   setStatus(t("logsStreaming"), "ok");
+  const idleTimer = setTimeout(() => {
+    if (logStreamController === controller && !runtime.logLines.length) {
+      runtime.logIdle = true;
+      if (active === "runtime" && $("runtimeView").value === "logs") renderRuntime();
+    }
+  }, 6000);
   try {
     const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch("/api/runtime/logs?level=info", { headers, signal: controller.signal });
+    const level = runtime.logLevel === "warning" ? "warn" : runtime.logLevel || "warn";
+    const response = await fetch(`/api/runtime/logs?level=${encodeURIComponent(level)}`, { headers, signal: controller.signal });
     if (!response.ok) throw new Error(`${t("runtimeUnavailable")}: HTTP ${response.status}`);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -1427,11 +1472,13 @@ async function startRuntimeLogs() {
       const text = decoder.decode(value, { stream: true });
       runtime.logLines.push(...text.split(/\r?\n/).filter(Boolean));
       runtime.logLines = runtime.logLines.slice(-300);
+      runtime.logIdle = false;
       if (active === "runtime" && $("runtimeView").value === "logs") renderRuntime();
     }
   } catch (error) {
     if (error.name !== "AbortError") setStatus(error.message, "bad");
   } finally {
+    clearTimeout(idleTimer);
     if (logStreamController === controller) logStreamController = null;
     if (active === "runtime") renderRuntime();
   }
@@ -2449,6 +2496,7 @@ $("runtimeView").addEventListener("change", () => {
   if ($("runtimeView").value !== "logs") stopRuntimeLogs(false);
   refreshRuntime();
 });
+$("runtimeLogLevel").addEventListener("change", changeRuntimeLogLevel);
 $("brandLink").addEventListener("click", goNodes);
 $("brandLink").addEventListener("keydown", (event) => {
   if (event.key === "Enter" || event.key === " ") {
