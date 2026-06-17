@@ -113,7 +113,7 @@ detect_arch() {
 choose_sing_box_runtime() {
   # 安装阶段不再读取终端输入；架构保持 auto，由 detect_arch 根据 uname -m 选择 amd64/arm64 包。
   SING_BOX_ARCH="${SING_BOX_ARCH:-auto}"
-  echo "sing-box binary: bundled ${SING_BOX_BUNDLED_VERSION} (repository-tested, arch: ${SING_BOX_ARCH})"
+  echo "sing-box binary: bundled ${SING_BOX_BUNDLED_VERSION} (repository-tested, arch: $(detect_arch))"
 }
 
 install_sing_box() {
@@ -376,7 +376,7 @@ enable_services() {
 }
 
 refresh_tproxy_after_start() {
-  python3 "$PROJECT_DIR/scripts/sync_tproxy_setup.py"
+  python3 "$PROJECT_DIR/scripts/sync_tproxy_setup.py" >/dev/null
   systemctl restart sing-box-tproxy.service
 }
 

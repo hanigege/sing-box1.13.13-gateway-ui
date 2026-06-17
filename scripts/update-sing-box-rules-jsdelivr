@@ -206,8 +206,7 @@ PY
       fi
       return 0
     fi
-    echo "optional telegram cidr source failed: $source" >&2
-    [ -s "$log" ] && sed 's/^/  /' "$log" >&2 || true
+    echo "optional telegram cidr source unavailable: $source" >&2
   done
   if [ -s "$TELEGRAM_CIDR_FILE" ]; then
     echo "kept optional telegram cidr list cache"
