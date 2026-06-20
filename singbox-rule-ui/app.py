@@ -2786,6 +2786,66 @@ def test_node_delay(tag, url=None, timeout_ms=5000):
     return {"tag": tag, "ok": isinstance(delay, int), "delay": delay if isinstance(delay, int) else None, "error": None if isinstance(delay, int) else "No delay returned"}
 
 
+def auto_selected_delay(auto_now, measured_delays):
+    if not auto_now:
+        return None
+    item = measured_delays.get(auto_now)
+    if isinstance(item, dict) and isinstance(item.get("delay"), int):
+        return item["delay"]
+    return read_delay_history(auto_now)
+
+
+def auto_alignment_decision(auto_now, current_delay, best_tag, best_delay, tolerance):
+    if not best_tag or not isinstance(best_delay, int):
+        return {"shouldSwitch": False, "target": auto_now, "reason": "no best delay"}
+    if auto_now == best_tag:
+        return {"shouldSwitch": False, "target": auto_now, "reason": "already best"}
+    if not auto_now or not isinstance(current_delay, int):
+        return {"shouldSwitch": True, "target": best_tag, "reason": "current delay unavailable"}
+    threshold = best_delay + tolerance
+    if current_delay > threshold:
+        return {"shouldSwitch": True, "target": best_tag, "reason": "current slower than tolerance", "threshold": threshold}
+    return {"shouldSwitch": False, "target": auto_now, "reason": "current within tolerance", "threshold": threshold}
+
+
+def align_auto_now_with_measured_delays(measured_delays):
+    good = [item for item in measured_delays.values() if isinstance(item, dict) and item.get("ok") and isinstance(item.get("delay"), int)]
+    if not good:
+        return {"changed": False, "target": None, "reason": "no measured delays"}
+    best = min(good, key=lambda item: item["delay"])
+    state = get_proxy_state()
+    if not state.get("ok"):
+        return {"changed": False, "target": best["tag"], "error": state.get("error") or "Auto status unavailable"}
+    auto_now = state.get("data", {}).get("autoNow")
+    current_delay = auto_selected_delay(auto_now, measured_delays)
+    tolerance = normalize_non_negative_number(load_groups().get("auto", {}).get("tolerance", 50), 50)
+    decision = auto_alignment_decision(auto_now, current_delay, best["tag"], best["delay"], tolerance)
+    if not decision["shouldSwitch"]:
+        return {
+            "changed": False,
+            "target": decision["target"],
+            "best": best["tag"],
+            "bestDelay": best["delay"],
+            "current": auto_now,
+            "currentDelay": current_delay,
+            "tolerance": tolerance,
+            "reason": decision["reason"],
+            "threshold": decision.get("threshold"),
+        }
+    return {
+        "changed": False,
+        "target": decision["target"],
+        "best": best["tag"],
+        "bestDelay": best["delay"],
+        "current": auto_now,
+        "currentDelay": current_delay,
+        "tolerance": tolerance,
+        "reason": decision["reason"],
+        "threshold": decision.get("threshold"),
+        "wouldSwitch": True,
+    }
+
+
 def refresh_proxy_delays():
     nodes = load_nodes()
     tags = enabled_node_tags(nodes)
@@ -2800,21 +2860,44 @@ def refresh_proxy_delays():
         values[tag] = item
         if not item["ok"] and not api_error:
             api_error = item.get("error")
-    # 逐节点 delay 会刷新各出站 history；这里再测 Auto，让 urltest 用同一轮最新结果重新选择 now。
+    # 逐节点 delay 会刷新各出站 history；这里再测 Auto，让 URLTest 用同一轮最新结果自行选择 now。
     auto_reprobe = test_node_delay("Auto", timeout_ms=8000) if tags else None
     if auto_reprobe and not auto_reprobe["ok"] and not api_error:
         api_error = auto_reprobe.get("error")
+    auto_align = align_auto_now_with_measured_delays(values) if tags else {"changed": False, "target": None}
     return {
         "available": api_error is None,
         "error": api_error,
         "delays": values,
         "autoProbe": auto_probe,
         "autoReprobe": auto_reprobe,
+        "autoAlign": auto_align,
     }
 
 
 def current_proxy_payload(test_delays=False):
     return {"proxy": get_proxy_state(), "delays": get_node_delays(test=test_delays)}
+
+
+def current_proxy_payload_with_history_alignment():
+    delays = get_node_delays(test=False)
+    delay_values = delays.get("delays", {}) if isinstance(delays, dict) else {}
+    if delay_values:
+        good = [item for item in delay_values.values() if isinstance(item, dict) and item.get("ok") and isinstance(item.get("delay"), int)]
+        if good:
+            auto_align = align_auto_now_with_measured_delays(delay_values)
+            if auto_align.get("wouldSwitch"):
+                # URLTest 不是 Selector，Clash API 不能直接 PUT 子节点；发现历史延迟已超过容差时，
+                # 触发一次 URLTest 自身测速，让 sing-box 按自己的规则刷新 Auto.now，再把真实运行态返回给 UI。
+                delays = refresh_proxy_delays()
+                return {"proxy": get_proxy_state(), "delays": delays}
+        else:
+            auto_align = {"changed": False, "target": None, "reason": "no measured delays"}
+    else:
+        auto_align = {"changed": False, "target": None}
+    if isinstance(delays, dict):
+        delays["autoAlign"] = auto_align
+    return {"proxy": get_proxy_state(), "delays": delays}
 
 
 def current_proxy_payload_after_probe(test_delays=False):
@@ -3272,7 +3355,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized():
                 self.send_error_json("Unauthorized", 401)
                 return
-            self.send_json({"proxy": get_proxy_state(), "delays": get_node_delays(test=False)})
+            self.send_json(current_proxy_payload_with_history_alignment())
             return
         if parsed.path == "/api/maintenance":
             if not self.authorized():
