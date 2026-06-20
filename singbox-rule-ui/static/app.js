@@ -54,6 +54,10 @@ const translations = {
     updateNode: "Update node",
     cancelEdit: "Cancel",
     editCancelled: "Edit cancelled",
+    transportBbr: "System BBR / TCP",
+    transportBrutal: "Brutal mux",
+    transportBbrBadge: "System BBR",
+    transportBrutalBadge: "Brutal",
     allowInsecure: "Allow insecure TLS",
     defaultProxy: "Default proxy",
     activeProxy: "Active proxy",
@@ -316,6 +320,10 @@ const translations = {
     updateNode: "更新节点",
     cancelEdit: "取消编辑",
     editCancelled: "已取消编辑",
+    transportBbr: "系统 BBR / TCP",
+    transportBrutal: "Brutal 复用",
+    transportBbrBadge: "系统 BBR",
+    transportBrutalBadge: "Brutal",
     allowInsecure: "允许不安全 TLS",
     defaultProxy: "默认代理",
     activeProxy: "当前生效",
@@ -823,6 +831,8 @@ function applyLanguage() {
   $("runtimeLogLevel").querySelector('option[value="debug"]').textContent = "debug";
   $("nodeSubmit").textContent = editingNodeTag ? t("updateNode") : t("addNode");
   $("nodeCancel").textContent = t("cancelEdit");
+  $("nodeTransportMode").querySelector('option[value="bbr"]').textContent = t("transportBbr");
+  $("nodeTransportMode").querySelector('option[value="brutal"]').textContent = t("transportBrutal");
 }
 
 function goNodes() {
@@ -2016,6 +2026,12 @@ function renderNodes() {
     delay.className = `node-pill delay ${delayTone(outbound.tag)}`;
     delay.textContent = `${t("delay")}: ${formatDelay(outbound.tag)}`;
     badges.appendChild(delay);
+    if (outbound.type === "vless") {
+      const transport = document.createElement("span");
+      transport.className = `node-pill ${outbound.multiplex?.brutal?.enabled ? "warn" : "saved"}`;
+      transport.textContent = outbound.multiplex?.brutal?.enabled ? t("transportBrutalBadge") : t("transportBbrBadge");
+      badges.appendChild(transport);
+    }
     if (isDefault) {
       const saved = document.createElement("span");
       saved.className = "node-pill saved";
@@ -2091,12 +2107,24 @@ function nodeFormChanged() {
   }
 }
 
+function syncNodeTransportControls() {
+  const isVless = $("nodeType").value === "vless";
+  const isBrutal = $("nodeTransportMode").value === "brutal";
+  $("nodeTransportMode").disabled = !isVless;
+  $("nodeUp").disabled = isVless && !isBrutal;
+  $("nodeDown").disabled = isVless && !isBrutal;
+  if (!isVless) {
+    $("nodeTransportMode").value = "brutal";
+  }
+}
+
 function selectNode(tag) {
   const node = getNode(tag);
   if (!node) return;
   const outbound = node.outbound;
   editingNodeTag = tag;
   $("nodeType").value = outbound.type || "hysteria2";
+  $("nodeTransportMode").value = outbound.type === "vless" && outbound.multiplex?.brutal?.enabled ? "brutal" : "bbr";
   $("nodeTag").value = outbound.tag || "";
   $("nodeServer").value = outbound.server || "";
   $("nodePort").value = outbound.server_port || "";
@@ -2108,6 +2136,7 @@ function selectNode(tag) {
   $("nodeUp").value = outbound.up_mbps || outbound.multiplex?.brutal?.up_mbps || "";
   $("nodeDown").value = outbound.down_mbps || outbound.multiplex?.brutal?.down_mbps || "";
   $("nodeInsecure").checked = outbound.tls?.insecure !== false;
+  syncNodeTransportControls();
   editingNodeSnapshot = stableNodeString(buildNodeFromForm());
   nodeEditChanged = false;
   setStatus(`${t("nodeSelected")}: ${tag}`, "ok");
@@ -2120,6 +2149,8 @@ function clearNodeForm() {
   nodeEditChanged = false;
   $("nodeForm").reset();
   $("nodeInsecure").checked = true;
+  $("nodeTransportMode").value = "bbr";
+  syncNodeTransportControls();
   setStatus(t("editCancelled"));
   render();
 }
@@ -2204,6 +2235,8 @@ function deleteNode(tag) {
     nodeEditChanged = false;
     $("nodeForm").reset();
     $("nodeInsecure").checked = true;
+    $("nodeTransportMode").value = "bbr";
+    syncNodeTransportControls();
   }
   markChanged();
   render();
@@ -2212,6 +2245,7 @@ function deleteNode(tag) {
 function buildNodeFromForm() {
   const type = $("nodeType").value;
   const tag = $("nodeTag").value.trim();
+  const transportMode = $("nodeTransportMode").value;
   const upMbps = $("nodeUp").value ? Number($("nodeUp").value) : null;
   const downMbps = $("nodeDown").value ? Number($("nodeDown").value) : null;
   if ((upMbps !== null && (!Number.isFinite(upMbps) || upMbps <= 0)) || (downMbps !== null && (!Number.isFinite(downMbps) || downMbps <= 0))) {
@@ -2261,7 +2295,7 @@ function buildNodeFromForm() {
     outbound.packet_encoding = outbound.packet_encoding || "xudp";
     outbound.tcp_fast_open = outbound.tcp_fast_open !== false;
     outbound.tls.utls = outbound.tls.utls || { enabled: true, fingerprint: "chrome" };
-    if (upMbps !== null || downMbps !== null) {
+    if (transportMode === "brutal") {
       outbound.multiplex = outbound.multiplex || { enabled: true, protocol: "h2mux", padding: false };
       outbound.multiplex.brutal = outbound.multiplex.brutal || { enabled: true };
       outbound.multiplex.brutal.enabled = true;
@@ -2269,9 +2303,9 @@ function buildNodeFromForm() {
       else delete outbound.multiplex.brutal.up_mbps;
       if (downMbps !== null) outbound.multiplex.brutal.down_mbps = downMbps;
       else delete outbound.multiplex.brutal.down_mbps;
-    } else if (outbound.multiplex?.brutal) {
-      delete outbound.multiplex.brutal.up_mbps;
-      delete outbound.multiplex.brutal.down_mbps;
+    } else {
+      // 选择系统 BBR/TCP 时删除整个 multiplex，确保 VLESS 回到普通 TCP，由内核拥塞控制接管。
+      delete outbound.multiplex;
     }
     if (publicKey) {
       outbound.tls.reality = { ...(base.tls?.reality || {}), enabled: true, public_key: publicKey };
@@ -2307,6 +2341,8 @@ async function addNode(event) {
   nodeEditChanged = false;
   event.target.reset();
   $("nodeInsecure").checked = true;
+  $("nodeTransportMode").value = "bbr";
+  syncNodeTransportControls();
   selectNode(node.outbound.tag);
   markChanged();
   render();
@@ -2473,6 +2509,14 @@ $("addForm").addEventListener("submit", addEntry);
 $("nodeForm").addEventListener("submit", addNode);
 $("nodeForm").addEventListener("input", syncNodeFormState);
 $("nodeForm").addEventListener("change", syncNodeFormState);
+$("nodeType").addEventListener("change", () => {
+  syncNodeTransportControls();
+  syncNodeFormState();
+});
+$("nodeTransportMode").addEventListener("change", () => {
+  syncNodeTransportControls();
+  syncNodeFormState();
+});
 $("nodeCancel").addEventListener("click", clearNodeForm);
 $("searchInput").addEventListener("input", render);
 $("typeInput").addEventListener("change", updateValueHint);
@@ -2569,6 +2613,7 @@ $("tokenInput").addEventListener("keydown", (event) => {
 });
 
 applyLanguage();
+syncNodeTransportControls();
 setStatus(t("ready"));
 updateButtons();
 load();

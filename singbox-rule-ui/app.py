@@ -640,14 +640,18 @@ def normalize_node(raw):
         if isinstance(brutal, dict):
             up = normalize_positive_number(brutal.get("up_mbps"), None)
             down = normalize_positive_number(brutal.get("down_mbps"), None)
-            if up is not None:
+            if brutal.get("enabled") is False:
+                # 选择系统 BBR/TCP 时删除整个 multiplex，确保 VLESS 回到普通 TCP，由内核拥塞控制接管。
+                outbound.pop("multiplex", None)
+            elif up is not None:
                 brutal["up_mbps"] = up
             else:
                 brutal.pop("up_mbps", None)
-            if down is not None:
-                brutal["down_mbps"] = down
-            else:
-                brutal.pop("down_mbps", None)
+            if isinstance(outbound.get("multiplex", {}).get("brutal"), dict):
+                if down is not None:
+                    brutal["down_mbps"] = down
+                else:
+                    brutal.pop("down_mbps", None)
     tls = outbound.get("tls")
     if isinstance(tls, dict):
         tls["enabled"] = normalize_bool(tls.get("enabled", True))
