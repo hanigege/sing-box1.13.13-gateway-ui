@@ -2590,6 +2590,50 @@ def maintenance_status():
             "outboundServers": resolved_outbound_servers(),
             "planned": tproxy_bypass_sets(),
         },
+        "configHealth": config_health_status(),
+    }
+
+
+def duplicate_count(items):
+    seen = set()
+    duplicates = 0
+    for item in items or []:
+        key = json.dumps(item, sort_keys=True, ensure_ascii=False)
+        if key in seen:
+            duplicates += 1
+        else:
+            seen.add(key)
+    return duplicates
+
+
+def config_health_status():
+    config = load_json(CONFIG_PATH, {}) if CONFIG_PATH.exists() else {}
+    route_rules = config.get("route", {}).get("rules", []) or []
+    dns_rules = config.get("dns", {}).get("rules", []) or []
+    rule_sets = config.get("route", {}).get("rule_set", []) or []
+    udp443_reject = [
+        rule
+        for rule in route_rules
+        if isinstance(rule, dict)
+        and rule.get("network") == "udp"
+        and rule.get("port") == 443
+        and rule.get("action") == "reject"
+    ]
+    duplicates = {
+        "route": duplicate_count(route_rules),
+        "dns": duplicate_count(dns_rules),
+        "ruleSet": duplicate_count(rule_sets),
+    }
+    # 维护页只做只读体检，不参与配置生成；这里用于提前发现重复规则膨胀，避免长期保存后拖慢路由匹配。
+    ok = not any(duplicates.values()) and len(udp443_reject) <= 2
+    return {
+        "ok": ok,
+        "routeRules": len(route_rules),
+        "dnsRules": len(dns_rules),
+        "ruleSets": len(rule_sets),
+        "outbounds": len(config.get("outbounds", []) or []),
+        "duplicateRules": duplicates,
+        "udp443RejectRules": len(udp443_reject),
     }
 
 

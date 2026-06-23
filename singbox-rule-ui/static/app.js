@@ -144,6 +144,16 @@ const translations = {
     backupTitle: "Backup and restore",
     backupNote: "Export or restore the UI-managed rules, nodes, and routing settings.",
     maintenanceOverview: "Maintenance overview",
+    configHealthTitle: "Config health",
+    configHealthStatus: "Config health",
+    configHealthOk: "No duplicate managed rules",
+    configHealthWarn: "Duplicate or excessive managed rules detected",
+    routeRuleCount: "Route rules",
+    dnsRuleCount: "DNS rules",
+    ruleSetCount: "Rule sets",
+    outboundCount: "Outbounds",
+    duplicateRuleCount: "Duplicate rules",
+    udp443RejectCount: "UDP/443 reject rules",
     ruleUpdateTitle: "Rule-set updates",
     ruleUpdateDetails: "Rule update details",
     updatedRules: "Updated",
@@ -411,6 +421,16 @@ const translations = {
     backupTitle: "备份与恢复",
     backupNote: "导出或恢复 UI 管理的规则、节点和分流设置。",
     maintenanceOverview: "维护概览",
+    configHealthTitle: "配置健康",
+    configHealthStatus: "配置健康",
+    configHealthOk: "未发现重复受管理规则",
+    configHealthWarn: "发现重复或过量受管理规则",
+    routeRuleCount: "路由规则数",
+    dnsRuleCount: "DNS 规则数",
+    ruleSetCount: "规则集数",
+    outboundCount: "出站数",
+    duplicateRuleCount: "重复规则数",
+    udp443RejectCount: "UDP/443 拒绝规则数",
     ruleUpdateTitle: "分流规则更新",
     ruleUpdateDetails: "规则更新明细",
     updatedRules: "已更新",
@@ -1173,6 +1193,7 @@ function renderMaintenance() {
   const info = maintenance || {};
   const rule = info.ruleUpdate || {};
   const tproxy = info.tproxy || {};
+  const configHealth = info.configHealth || {};
   $("maintenanceTitle").textContent = t("maintenance");
   $("maintenanceSummary").textContent = t("maintenanceNote");
   const rows = $("maintenanceRows");
@@ -1196,6 +1217,7 @@ function renderMaintenance() {
   const updateResult = rule.result || rule.serviceState;
 
   rows.appendChild(renderMaintenanceOverview([
+    [t("configHealthStatus"), configHealth.ok === false ? t("configHealthWarn") : t("configHealthOk"), configHealth.ok === false ? "warn" : "good"],
     [t("updateResult"), updateResult, statusTone(updateResult)],
     [t("updatedCount"), String((summary.updated || []).length), "good"],
     [t("tproxyService"), tproxy.serviceActive, statusTone(tproxy.serviceActive)],
@@ -1218,6 +1240,19 @@ function renderMaintenance() {
     [t("plannedBypass4"), tproxy.planned?.bypass4],
     [t("plannedBypass6"), tproxy.planned?.bypass6],
   ], `${t("tproxyPolicy")}${tproxy.ipv6PrefixMatches === false ? ` ${t("prefixMismatch")}` : ""}`));
+  rows.appendChild(renderMaintenanceDetails(t("configHealthTitle"), [
+    [t("configHealthStatus"), configHealth.ok === false ? t("configHealthWarn") : t("configHealthOk"), configHealth.ok === false ? "warn" : "good"],
+    [t("routeRuleCount"), configHealth.routeRules ?? 0],
+    [t("dnsRuleCount"), configHealth.dnsRules ?? 0],
+    [t("ruleSetCount"), configHealth.ruleSets ?? 0],
+    [t("outboundCount"), configHealth.outbounds ?? 0],
+    [
+      t("duplicateRuleCount"),
+      `${configHealth.duplicateRules?.route ?? 0}/${configHealth.duplicateRules?.dns ?? 0}/${configHealth.duplicateRules?.ruleSet ?? 0}`,
+      configHealth.ok === false ? "warn" : "good",
+    ],
+    [t("udp443RejectCount"), configHealth.udp443RejectRules ?? 0, Number(configHealth.udp443RejectRules || 0) > 2 ? "warn" : "good"],
+  ]));
   rows.appendChild(renderMaintenanceDetails(t("ruleUpdateTitle"), [
     [t("nextUpdate"), rule.next],
     [t("lastUpdate"), rule.last],

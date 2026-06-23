@@ -1193,9 +1193,9 @@ input[type="checkbox"] {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 850;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .maintenance-overview-tile.good strong {
@@ -1203,7 +1203,7 @@ input[type="checkbox"] {
 }
 
 .maintenance-overview-tile.compact strong {
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1.25;
 }
 
