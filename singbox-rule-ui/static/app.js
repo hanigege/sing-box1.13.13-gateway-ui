@@ -934,43 +934,21 @@ function render() {
     return;
   }
   const items = state.lists[active] || [];
-  const query = $("searchInput").value.trim().toLowerCase();
-  const filtered = query
-    ? items.filter((item) => `${item.type}:${item.value}`.toLowerCase().includes(query))
-    : items;
   const listInfo = translations[lang].lists[active];
   const note = active === "ddns" ? t(ddnsDnsMode() === "remote" ? "ddnsRemoteSummary" : "ddnsLocalSummary") : listInfo.note;
   $("listTitle").textContent = listInfo.title;
   $("listSummary").textContent = `${items.length} ${t("entries")} · ${note}`;
 
+  // 列表视图：用 textarea 替代逐行显示，方便批量粘贴、删除和管理
+  renderListTextarea(items);
+
+  // 列表视图隐藏搜索框（用 textarea 的浏览器原生查找即可）
+  $("searchInput").style.display = "none";
+
   const rows = $("rows");
   rows.innerHTML = "";
   rows.appendChild(renderMatchHelp());
   if (active === "ddns") rows.appendChild(renderDdnsControls());
-  if (!filtered.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty";
-    empty.textContent = query ? t("noMatches") : t("noEntries");
-    rows.appendChild(empty);
-    return;
-  }
-  for (const item of filtered) {
-    const row = document.createElement("div");
-    row.className = "rule-row";
-    const badge = document.createElement("span");
-    badge.className = `badge ${item.type}`;
-    badge.textContent = translations[lang].types[item.type] || item.type;
-    const value = document.createElement("code");
-    value.textContent = item.value;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "icon-btn";
-    remove.title = t("remove");
-    remove.textContent = "×";
-    remove.addEventListener("click", () => removeEntry(item));
-    row.append(badge, value, remove);
-    rows.appendChild(row);
-  }
   updateButtons();
 }
 
@@ -2410,6 +2388,75 @@ function addEntry(event) {
   markChanged();
 }
 
+// entriesToText - 把条目数组格式化为逐行文本（类型: 值），供 textarea 显示
+function entriesToText(items) {
+  if (!items || !items.length) return "";
+  return items.map((item) => `${item.type}: ${item.value}`).join("\n");
+}
+
+// textareaToEntries - 把 textarea 文本解析回条目数组，自动去重
+function textareaToEntries(text) {
+  const lines = text.split("\n");
+  const allowedTypes = allowedEntryTypes();
+  const defaultType = $("typeInput").value || allowedTypes[0];
+  const seen = new Set();
+  const entries = [];
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    // 尝试解析 "类型前缀: 值" 格式
+    const colonMatch = line.match(/^([\w_]+):\s*(.*)$/);
+    let type, value;
+    if (colonMatch && allowedTypes.includes(colonMatch[1])) {
+      type = colonMatch[1];
+      value = colonMatch[2].trim();
+    } else {
+      // 没有识别出类型前缀，使用当前下拉框选中的类型
+      type = defaultType;
+      value = line;
+    }
+    if (!value) continue;
+    if (type !== "ip_cidr") value = value.replace(/\.$/, "");
+    value = value.toLowerCase();
+    const key = `${type}:${value}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ type, value });
+  }
+  return entries;
+}
+
+// textarea 输入回调：解析内容并更新 state，避免中断用户输入
+function onListTextareaInput() {
+  const ta = $("listTextarea");
+  if (!ta) return;
+  const entries = textareaToEntries(ta.value);
+  const oldItems = state.lists[active] || [];
+  // 只在内容真正变化时才标记 dirty，避免每次按键都触发
+  const changed =
+    oldItems.length !== entries.length ||
+    oldItems.some((item, i) => item.type !== entries[i]?.type || item.value !== entries[i]?.value);
+  state.lists[active] = entries;
+  if (changed) markChanged();
+  // 实时更新条目计数，不重新渲染（保持光标位置）
+  const listInfo = translations[lang].lists[active];
+  const note =
+    active === "ddns"
+      ? t(ddnsDnsMode() === "remote" ? "ddnsRemoteSummary" : "ddnsLocalSummary")
+      : listInfo.note;
+  $("listSummary").textContent = `${entries.length} ${t("entries")} · ${note}`;
+}
+
+// renderListTextarea - 填充 textarea 内容；只在切换列表或 textarea 无焦点时写入，避免打断用户编辑
+function renderListTextarea(items) {
+  const ta = $("listTextarea");
+  if (!ta) return;
+  if (ta.dataset.active !== active || document.activeElement !== ta) {
+    ta.dataset.active = active;
+    ta.value = entriesToText(items);
+  }
+}
+
 async function save() {
   syncDraftSettings();
   if (!dirty) {
@@ -2546,6 +2593,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 $("addForm").addEventListener("submit", addEntry);
+// 列表 textarea 输入实时解析：一行一个条目，更新 state 后标记 dirty
+$("listTextarea").addEventListener("input", onListTextareaInput);
 $("nodeForm").addEventListener("submit", addNode);
 $("nodeForm").addEventListener("input", syncNodeFormState);
 $("nodeForm").addEventListener("change", syncNodeFormState);
